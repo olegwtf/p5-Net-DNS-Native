@@ -7,5 +7,6 @@ WriteMakefile(
 	VERSION_FROM   => 'lib/Net/DNS/Native.pm',
 	META_MERGE     => {resources => {repository => 'https://github.com/olegwtf/p5-Net-DNS-Native'}},
 	ABSTRACT_FROM  => 'lib/Net/DNS/Native.pm',
-	AUTHOR         => 'Oleg G <oleg@cpan.org>'
+	AUTHOR         => 'Oleg G <oleg@cpan.org>',
+	LIBS           => ['-lpthread'],
 );
