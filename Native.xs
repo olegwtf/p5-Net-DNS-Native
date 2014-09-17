@@ -12,6 +12,8 @@ typedef struct {
 
 MODULE = Net::DNS::Native	PACKAGE = Net::DNS::Native
 
+PROTOTYPES: DISABLE
+
 SV*
 new(char* class)
 	PREINIT:
