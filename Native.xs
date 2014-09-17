@@ -7,22 +7,28 @@
 
 typedef struct {
 	HV* fd_set;
-	pthread_mutex_t* mutex;
-} DNS_OBJ;
+	pthread_mutex_t mutex;
+} Net_DNS_Native;
 
 MODULE = Net::DNS::Native	PACKAGE = Net::DNS::Native
 
 SV*
 new(char* class)
 	PREINIT:
-		DNS_OBJ *self;
+		Net_DNS_Native *self;
 	CODE:
-		Newx(self, 1, DNS_OBJ);
+		Newx(self, 1, Net_DNS_Native);
 		self->fd_set = newHV();
-		pthread_mutex_init(self->mutex, NULL);
+		pthread_mutex_init(&self->mutex, NULL);
 		
 		RETVAL = sv_newmortal();
 		sv_setref_pv(RETVAL, class, (void *)self);
 		SvREFCNT_inc(RETVAL);
 	OUTPUT:
 		RETVAL
+
+void
+DESTROY(Net_DNS_Native *self)
+	CODE:
+		pthread_mutex_destroy(&self->mutex);
+		Safefree(self);
