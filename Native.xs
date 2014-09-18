@@ -23,14 +23,14 @@ new(char* class)
 		self->fd_set = newHV();
 		pthread_mutex_init(&self->mutex, NULL);
 		
-		RETVAL = sv_newmortal();
+		RETVAL = newSV(0);
 		sv_setref_pv(RETVAL, class, (void *)self);
-		SvREFCNT_inc(RETVAL);
 	OUTPUT:
 		RETVAL
 
 void
 DESTROY(Net_DNS_Native *self)
 	CODE:
+		SvREFCNT_dec((SV*)self->fd_set);
 		pthread_mutex_destroy(&self->mutex);
 		Safefree(self);
