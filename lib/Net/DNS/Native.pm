@@ -2,6 +2,7 @@ package Net::DNS::Native;
 
 use strict;
 use warnings;
+use Socket ();
 use XSLoader;
 
 our $VERSION = '0.01';

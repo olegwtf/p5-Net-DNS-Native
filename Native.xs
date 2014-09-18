@@ -29,6 +29,21 @@ new(char* class)
 		RETVAL
 
 void
+inet_aton(Net_DNS_Native *self, char* host)
+	CODE:
+		ENTER;
+		SAVETMPS;
+		
+		PUSHMARK(SP);
+		XPUSHs(sv_2mortal(newSVpv(host, 0)));
+		PUTBACK;
+		
+		call_pv("Socket::inet_aton", G_DISCARD);
+		
+		FREETMPS;
+		LEAVE;
+
+void
 DESTROY(Net_DNS_Native *self)
 	CODE:
 		SvREFCNT_dec((SV*)self->fd_set);
