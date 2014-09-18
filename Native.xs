@@ -4,6 +4,7 @@
 #include "ppport.h"
 #include <pthread.h>
 #include <string.h>
+#include <netdb.h>
 
 typedef struct {
 	HV* fd_set;
@@ -16,28 +17,22 @@ struct thread_arg {
 	char *host;
 };
 
-/*
-void *_start_inet_aton(void *arg) {
-	_inet_aton(arg);
-}
-*/
 void *_inet_aton(void *v_arg) {
+	SV* rv = &PL_sv_undef;
 	struct thread_arg *arg = (struct thread_arg *)v_arg;
 	
-	dSP;
-	ENTER;
-	SAVETMPS;
-	PUSHMARK(SP);
-	XPUSHs(sv_2mortal(newSVpv(arg->host, 0)));
-	PUTBACK;
+	struct hostent *rslv = gethostbyname(arg->host);
+	if (!rslv) {
+		goto RET;
+	}
 	
-	call_pv("Socket::inet_aton", G_DISCARD);
+	if (rslv->h_addrtype == AF_INET && rslv->h_length == 4) {
+		//rv = newSVpvn((char *)rslv->h_addr, rslv->h_length);
+	}
 	
-	FREETMPS;
-	LEAVE;
-	
-	free(arg->host);
-	free(arg);
+	RET:
+		free(arg->host);
+		free(arg);
 }
 
 MODULE = Net::DNS::Native	PACKAGE = Net::DNS::Native
