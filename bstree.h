@@ -21,7 +21,7 @@ void bstree_del(bstree *tree, int key);
 void bstree_destroy(bstree *tree);
 int bstree_size(bstree *tree);
 bstree_node* _bstree_new_node(int key, void *val);
-int _bstree_put(bstree_node *node, int key, void *val);
+int _bstree_put(bstree_node **node_ref, int key, void *val);
 void* _bstree_get(bstree_node *node, int key);
 int _bstree_del(bstree *tree, bstree_node *parent, bstree_node *node, int key);
 bstree_node* _bstree_most_left_node_parent(bstree_node *parent, bstree_node *node);
@@ -38,7 +38,7 @@ bstree* bstree_new() {
 }
 
 void bstree_put(bstree *tree, int key, void *val) {
-	tree->size += _bstree_put(tree->root, key, val);
+	tree->size += _bstree_put(&tree->root, key, val);
 }
 
 void* bstree_get(bstree *tree, int key) {
@@ -69,17 +69,19 @@ bstree_node* _bstree_new_node(int key, void *val) {
 	return node;
 }
 
-int _bstree_put(bstree_node *node, int key, void *val) {
+int _bstree_put(bstree_node **node_ref, int key, void *val) {
+	bstree_node *node = *node_ref;
+	
 	if (node == NULL) {
-		node = _bstree_new_node(key, val);
+		*node_ref = _bstree_new_node(key, val);
 		return 1;
 	}
 	
 	if (key > node->key)
-		return _bstree_put(node->right, key, val);
+		return _bstree_put(&node->right, key, val);
 	
 	if (key < node->key)
-		return _bstree_put(node->left, key, val);
+		return _bstree_put(&node->left, key, val);
 	
 	node->key = key;
 	node->val = val;
@@ -94,7 +96,7 @@ void* _bstree_get(bstree_node *node, int key) {
 		return _bstree_get(node->right, key);
 	
 	if (key < node->key)
-		_bstree_get(node->left, key);
+		return _bstree_get(node->left, key);
 	
 	return node->val;
 }
