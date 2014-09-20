@@ -18,10 +18,10 @@ typedef struct {
 void bstree_put(bstree *tree, int key, void *val);
 void* bstree_get(bstree *tree, int key);
 void bstree_del(bstree *tree, int key);
-void bstree_destroy(bstree *tree);
 int bstree_size(bstree *tree);
+void bstree_destroy(bstree *tree);
 bstree_node* _bstree_new_node(int key, void *val);
-int _bstree_put(bstree_node **node_ref, int key, void *val);
+int _bstree_put(bstree_node **node_ptr, int key, void *val);
 void* _bstree_get(bstree_node *node, int key);
 int _bstree_del(bstree *tree, bstree_node *parent, bstree_node *node, int key);
 bstree_node* _bstree_most_left_node_parent(bstree_node *parent, bstree_node *node);
@@ -49,13 +49,13 @@ void bstree_del(bstree *tree, int key) {
 	tree->size -= _bstree_del(tree, NULL, tree->root, key);
 }
 
+int bstree_size(bstree *tree) {
+	return tree->size;
+}
+
 void bstree_destroy(bstree *tree) {
 	_bstree_destroy(tree->root);
 	free(tree);
-}
-
-int bstree_size(bstree *tree) {
-	return tree->size;
 }
 
 // PRIVATE API
@@ -69,11 +69,11 @@ bstree_node* _bstree_new_node(int key, void *val) {
 	return node;
 }
 
-int _bstree_put(bstree_node **node_ref, int key, void *val) {
-	bstree_node *node = *node_ref;
+int _bstree_put(bstree_node **node_ptr, int key, void *val) {
+	bstree_node *node = *node_ptr;
 	
 	if (node == NULL) {
-		*node_ref = _bstree_new_node(key, val);
+		*node_ptr = _bstree_new_node(key, val);
 		return 1;
 	}
 	
