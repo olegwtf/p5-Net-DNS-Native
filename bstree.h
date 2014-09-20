@@ -1,6 +1,4 @@
 /* Binary Search Tree implementation */
-#include <stdlib.h>
-
 typedef struct bstree_node bstree_node;
 
 struct bstree_node {

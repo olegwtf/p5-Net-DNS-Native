@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <string.h>
 #include <netdb.h>
+#include "bstree.h"
 
 typedef struct {
 	pthread_mutex_t mutex;
@@ -12,28 +13,42 @@ typedef struct {
 	SV* const_af_unix;
 	SV* const_sock_stream;
 	SV* const_pf_unspec;
+	bstree* fd_map;
 } Net_DNS_Native;
 
-struct thread_arg {
+typedef struct {
 	Net_DNS_Native *self;
 	char *host;
-};
+	int fd1;
+} DNS_thread_arg;
+
+typedef struct {
+	int fd2;
+	SV* sock2;
+	char *ip;
+} DNS_result;
 
 void *_inet_aton(void *v_arg) {
-	struct thread_arg *arg = (struct thread_arg *)v_arg;
+	DNS_thread_arg *arg = (DNS_thread_arg *)v_arg;
 	
 	struct hostent *rslv = gethostbyname(arg->host);
-	if (!rslv) {
-		goto RET;
-	}
 	
-	if (rslv->h_addrtype == AF_INET && rslv->h_length == 4) {
+	pthread_mutex_lock(&arg->self->mutex);
+	DNS_result *res = bstree_get(arg->self->fd_map, arg->fd1);
+	
+	if (rslv && rslv->h_addrtype == AF_INET && rslv->h_length == 4) {
 		//rv = newSVpvn((char *)rslv->h_addr, rslv->h_length);
+		res->ip = rslv->h_addr;
+	}
+	else {
+		
 	}
 	
-	RET:
-		free(arg->host);
-		free(arg);
+	pthread_mutex_unlock(&arg->self->mutex);
+	
+	free(arg->host);
+	free(arg);
+	write(res->fd2, "\1", 1);
 }
 
 SV* _get_perl_constant(char *name) {
@@ -92,6 +107,8 @@ new(char* class)
 		self->const_sock_stream = _get_perl_constant("Socket::SOCK_STREAM");
 		self->const_pf_unspec   = _get_perl_constant("Socket::PF_UNSPEC");
 		
+		self->fd_map = bstree_new();
+		
 		RETVAL = newSV(0);
 		sv_setref_pv(RETVAL, class, (void *)self);
 	OUTPUT:
@@ -120,10 +137,20 @@ inet_aton(Net_DNS_Native *self, char *host)
 		POPi;
 		PUTBACK;
 		
+		DNS_result *res = malloc(sizeof(DNS_result));
+		res->fd2   = _get_perl_handle_fd(sock2);
+		res->sock2 = sock2;
+		res->ip    = NULL;
+		pthread_mutex_lock(&self->mutex);
+		int fd1 = _get_perl_handle_fd(sock1);
+		bstree_put(self->fd_map, fd1, res);
+		pthread_mutex_unlock(&self->mutex);
+		
 		pthread_t tid;
-		struct thread_arg *t_arg = malloc(sizeof(struct thread_arg));
+		DNS_thread_arg *t_arg = malloc(sizeof(DNS_thread_arg));
 		t_arg->self = self;
 		t_arg->host = strdup(host);
+		t_arg->fd1  = fd1;
 		pthread_create(&tid, &self->thread_attrs, _inet_aton, (void *)t_arg);
 		
 		RETVAL = sock1;
@@ -135,4 +162,5 @@ DESTROY(Net_DNS_Native *self)
 	CODE:
 		pthread_attr_destroy(&self->thread_attrs);
 		pthread_mutex_destroy(&self->mutex);
+		bstree_destroy(self->fd_map);
 		Safefree(self);
