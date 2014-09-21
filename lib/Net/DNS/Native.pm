@@ -57,7 +57,7 @@ sub get_result {
 	if ($type == GETHOSTBYNAME) {
 		return
 		  $err ? () : 
-		  ($res[0]{canonname}, undef, Socket::AF_INET, length($res[0]{addr}), grep { (Socket::unpack_sockaddr_in($_->{addr}))[1] } @res);
+		  ($res[0]{canonname}, undef, Socket::AF_INET, length($res[0]{addr}), map { (Socket::unpack_sockaddr_in($_->{addr}))[1] } @res);
 	}
 }
 
