@@ -14,35 +14,32 @@ typedef struct {
 typedef struct {
 	Net_DNS_Native *self;
 	char *host;
+	char *service;
+	struct addrinfo *hints;
 	int fd0;
 } DNS_thread_arg;
 
 typedef struct {
 	int fd1;
-	char *ip;
-	int ip_len;
+	int error;
+	struct addrinfo *hostinfo;
+	int type;
 } DNS_result;
 
-void *_inet_aton(void *v_arg) {
+void *_getaddrinfo(void *v_arg) {
 	DNS_thread_arg *arg = (DNS_thread_arg *)v_arg;
-	
-	printf("gethostbyname started at %d\n", time(NULL));
-	struct hostent *rslv = gethostbyname(arg->host);
-	printf("gethostbyname finished at %d\n", time(NULL));
 	
 	pthread_mutex_lock(&arg->self->mutex);
 	DNS_result *res = bstree_get(arg->self->fd_map, arg->fd0);
-	
-	if (rslv && rslv->h_addrtype == AF_INET && rslv->h_length == 4) {
-		res->ip = malloc(rslv->h_length*sizeof(char));
-		memcpy(res->ip, rslv->h_addr, res->ip_len=rslv->h_length);
-	}
-	
 	pthread_mutex_unlock(&arg->self->mutex);
 	
-	free(arg->host);
+	res->error = getaddrinfo(arg->host, arg->service, arg->hints, &res->hostinfo);
+	if (arg->hints)   free(arg->hints);
+	if (arg->host)    free(arg->host);
+	if (arg->service) free(arg->service);
 	free(arg);
-	write(res->fd1, "\1", 1);
+	
+	write(res->fd1, "1", 1);
 }
 
 MODULE = Net::DNS::Native	PACKAGE = Net::DNS::Native
@@ -66,42 +63,117 @@ new(char* class)
 		RETVAL
 
 int
-inet_aton_fd(Net_DNS_Native *self, char *host)
+_getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int type)
 	INIT:
 		int fd[2];
 	CODE:
-		socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fd);
+		if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fd) != 0)
+			croak("socketpair(): %s", strerror(errno));
+		
+		struct addrinfo *hints = NULL;
+		
+		if (SvOK(sv_hints)) {
+			// defined
+			if (!SvROK(sv_hints) || SvTYPE(SvRV(sv_hints)) != SVt_PVHV) {
+				// not reference or not a hash inside reference
+				croak("hints should be reference to hash");
+			}
+			
+			hints = malloc(sizeof(struct addrinfo));
+			hints->ai_flags = 0;
+			hints->ai_family = AF_UNSPEC;
+			hints->ai_socktype = 0;
+			hints->ai_protocol = 0;
+			hints->ai_addrlen = 0;
+			hints->ai_addr = NULL;
+			hints->ai_canonname = NULL;
+			hints->ai_next = NULL;
+			
+			HV* hv_hints = (HV*)SvRV(sv_hints);
+			
+			SV **flags_ptr = hv_fetch(hv_hints, "flags", 5, 0);
+			if (flags_ptr != NULL) {
+				hints->ai_flags = SvIV(*flags_ptr);
+			}
+			
+			SV **family_ptr = hv_fetch(hv_hints, "family", 6, 0);
+			if (family_ptr != NULL) {
+				hints->ai_family = SvIV(*family_ptr);
+			}
+			
+			SV **socktype_ptr = hv_fetch(hv_hints, "socktype", 8, 0);
+			if (socktype_ptr != NULL) {
+				hints->ai_socktype = SvIV(*socktype_ptr);
+			}
+			
+			SV **protocol_ptr = hv_fetch(hv_hints, "protocol", 8, 0);
+			if (protocol_ptr != NULL) {
+				hints->ai_protocol = SvIV(*protocol_ptr);
+			}
+		}
 		
 		DNS_result *res = malloc(sizeof(DNS_result));
-		res->fd1    = fd[1];
-		res->ip     = NULL;
-		res->ip_len = 0;
-		pthread_mutex_lock(&self->mutex);
+		res->fd1 = fd[1];
+		res->error = 0;
+		res->hostinfo = NULL;
+		res->type = type;
 		bstree_put(self->fd_map, fd[0], res);
-		pthread_mutex_unlock(&self->mutex);
+		
+		DNS_thread_arg *arg = malloc(sizeof(DNS_thread_arg));
+		arg->self = self;
+		arg->host = strlen(host) ? strdup(host) : NULL;
+		arg->service = strlen(service) ? strdup(service) : NULL;
+		arg->hints = hints;
+		arg->fd0 = fd[0];
 		
 		pthread_t tid;
-		DNS_thread_arg *t_arg = malloc(sizeof(DNS_thread_arg));
-		t_arg->self = self;
-		t_arg->host = strdup(host);
-		t_arg->fd0  = fd[0];
-		pthread_create(&tid, &self->thread_attrs, _inet_aton, (void *)t_arg);
+		int rc = pthread_create(&tid, &self->thread_attrs, _getaddrinfo, (void *)arg);
+		if (rc != 0) {
+			free(arg);
+			free(res);
+			if (hints) free(hints);
+			bstree_del(self->fd_map, fd[0]);
+			close(fd[0]);
+			close(fd[1]);
+			croak("pthread_create(): %s", strerror(rc));
+		}
 		
 		RETVAL = fd[0];
 	OUTPUT:
 		RETVAL
 
 void
-get_result_fd(Net_DNS_Native *self, int fd)
+_get_result(Net_DNS_Native *self, int fd)
 	PPCODE:
 		pthread_mutex_lock(&self->mutex);
 		DNS_result *res = bstree_get(self->fd_map, fd);
+		bstree_del(self->fd_map, fd);
 		pthread_mutex_unlock(&self->mutex);
 		
-		XPUSHs(sv_2mortal(newSVpvn(res->ip, res->ip_len)));
+		XPUSHs(sv_2mortal(newSViv(res->type)));
+		SV *err = newSV(0);
+		sv_setiv(err, (IV)res->error);
+		sv_setpv(err, res->error ? gai_strerror(res->error) : "");
+		SvIOK_on(err);
+		XPUSHs(sv_2mortal(err));
+		
+		if (!res->error) {
+			struct addrinfo *info;
+			for (info = res->hostinfo; info != NULL; info = info->ai_next) {
+				HV *hv_info = newHV();
+				hv_store(hv_info, "family", 6, newSViv(info->ai_family), 0);
+				hv_store(hv_info, "socktype", 8, newSViv(info->ai_socktype), 0);
+				hv_store(hv_info, "protocol", 8, newSViv(info->ai_protocol), 0);
+				hv_store(hv_info, "addr", 4, newSVpvn((char*)info->ai_addr, info->ai_addrlen), 0);
+				hv_store(hv_info, "canonname", 9, info->ai_canonname ? newSVpv(info->ai_canonname, 0) : newSV(0), 0);
+				XPUSHs(sv_2mortal(newRV_noinc((SV*)hv_info)));
+			}
+			
+			freeaddrinfo(res->hostinfo);
+		}
+		
 		close(fd);
 		close(res->fd1);
-		free(res->ip);
 		free(res);
 
 void
