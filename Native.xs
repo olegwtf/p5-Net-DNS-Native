@@ -40,6 +40,7 @@ void *_getaddrinfo(void *v_arg) {
 	free(arg);
 	
 	write(res->fd1, "1", 1);
+	return NULL;
 }
 
 MODULE = Net::DNS::Native	PACKAGE = Net::DNS::Native
@@ -129,6 +130,8 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		pthread_t tid;
 		int rc = pthread_create(&tid, &self->thread_attrs, _getaddrinfo, (void *)arg);
 		if (rc != 0) {
+			if (arg->host)    free(arg->host);
+			if (arg->service) free(arg->service);
 			free(arg);
 			free(res);
 			if (hints) free(hints);
