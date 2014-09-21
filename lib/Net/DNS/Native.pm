@@ -11,7 +11,7 @@ use constant {
 	GETADDRINFO   => 3
 };
 
-our $VERSION = '0.01';
+our $VERSION = '0.01-RC1';
 
 XSLoader::load('Net::DNS::Native', $VERSION);
 
@@ -62,3 +62,125 @@ sub get_result {
 }
 
 1;
+
+__END__
+
+=pod
+
+=head1 NAME
+
+Net::DNS::Native - non-blocking system DNS resolver
+
+=head1 SYNOPSIS
+
+=over
+
+	use Net::DNS::Native;
+	use IO::Select;
+	use Socket;
+	
+	my $dns = Net::DNS::Native->new();
+	my $sock = $dns->getaddrinfo("google.com");
+	
+	my $sel = IO::Select->new($sock);
+	$sel->can_read(); # wait until resolving done
+	my ($err, @res) = $dns->get_result($sock);
+	die "Resolving failed: ", $err if ($err);
+	
+	for my $r (@res) {
+		warn "google.com has ip ",
+			$r->{family} == AF_INET ?
+				inet_ntoa((unpack_sockaddr_in($r->{addr}))[1]) :                   # IPv4
+				Socket::inet_ntop(AF_INET6, (unpack_sockaddr_in6($r->{addr}))[1]); # IPv6
+	}
+
+=back
+
+=over
+
+	use Net::DNS::Native;
+	use AnyEvent;
+	use Socket;
+	
+	my $dns = Net::DNS::Native->new;
+	
+	my $cv = AnyEvent->condvar;
+	$cv->begin;
+	
+	for my $host ('google.com', 'google.ru', 'google.cy') {
+		my $fh = $dns->inet_aton($host);
+		$cv->begin;
+		
+		my $w; $w = AnyEvent->io(
+			fh   => $fh,
+			poll => 'r',
+			cb   => sub {
+				my $ip = $dns->get_result($fh);
+				warn $host, $ip ? " has ip " . inet_ntoa($ip) : " has no ip";
+				$cv->end;
+				undef $w;
+			}
+		)
+	}
+	
+	$cv->end;
+	$cv->recv;
+
+=back
+
+=head1 DESCRIPTION
+
+This class provides several methods for host name resolution. It is designed to be used with event loops. All resolving are done
+by getaddrinfo(3) implemented in your system library. Since getaddrinfo() is blocking function and we don't want to block,
+call to this function will be done in separate thread. This class uses system native threads and not perl threads. So overhead
+shouldn't bee too big. Disadvantages of this method is that we can't provide timeout for resolving. And default timeout for
+getaddrinfo() on my system is about 40 sec.
+
+=head1 METHODS
+
+=head2 new
+
+This is a class constructor. Doesn't accept any arguments for now.
+
+=head2 getaddrinfo($host, $service, $hints)
+
+This is the most powerfull method. May resolve host to both IPv4 and IPv6 addresses. For full documentation see getaddrinfo()
+in L<Socket>. This method accepts same parameters but instead of result returns handle on which you need to wait for availability
+to read.
+
+=head2 inet_pton($family, $host)
+
+This method will resolve $host accordingly $family, which may be AF_INET to resolve to IPv4 or AF_INET6 to resolve to IPv6. For full
+documentation see inet_pton() in L<Socket>. This method accepts same parameters but instead of result returns handle on which you need
+to wait for availability to read.
+
+=head2 inet_aton($host)
+
+This method may be used only for resolving to IPv4. For full documentation see inet_aton() in L<Socket>. This method accepts same
+parameters but instead of result returns handle on which you need to wait for availability to read.
+
+=head2 gethostbyname($host)
+
+This method may be used only for resolving to IPv4. For full documentation see C<perldoc -f gethostbyname>. This method accepts
+same parameters but instead of result returns handle on which you need to wait for availability to read.
+
+=head2 get_result($handle)
+
+After handle returned by methods above will became ready for read you should call this method with handle as argument. It will
+return results appropriate to the method which returned this handle. For C<getaddrinfo> this will be C<($err, @res)> list. For
+C<inet_pton> and C<inet_aton> C<$packed_address> or C<undef>. For C<gethostbyname()> C<$packed_address> or C<undef> in scalar context and
+C<($name,$aliases,$addrtype,$length,@addrs)> in list context.
+
+B<NOTE:> it is important to call get_result() on returned handle when it will become ready for read. Because this method destroys resources
+associated with this handle. Otherwise you will get memory leaks.
+
+=head1 AUTHOR
+
+Oleg G, E<lt>oleg@cpan.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself
+
+=cut
