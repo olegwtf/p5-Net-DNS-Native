@@ -14,7 +14,7 @@ WriteMakefile(
 	META_MERGE     => {resources => {repository => 'https://github.com/olegwtf/p5-Net-DNS-Native'}},
 	ABSTRACT_FROM  => 'lib/Net/DNS/Native.pm',
 	AUTHOR         => 'Oleg G <oleg@cpan.org>',
-	LIBS           => [$^O eq 'MSWin32' ? ':nosearch -Lpthreads-win32/lib -lpthread -lWS2_32' : (), '-lpthread'],
+	LIBS           => [$^O eq 'MSWin32' ? ':nosearch -Lpthreads-win32/lib -lpthread -lWS2_32' : '-lpthread'],
 	PREREQ_PM      => { 'Socket' => 1.95 },
 	BUILD_REQUIRES => { 'Test::More' => 0.88 },
 	@additional
