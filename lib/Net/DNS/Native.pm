@@ -144,25 +144,24 @@ This is a class constructor. Doesn't accept any arguments for now.
 
 =head2 getaddrinfo($host, $service, $hints)
 
-This is the most powerfull method. May resolve host to both IPv4 and IPv6 addresses. For full documentation see getaddrinfo()
-in L<Socket>. This method accepts same parameters but instead of result returns handle on which you need to wait for availability
-to read.
+This is the most powerfull method. May resolve host to both IPv4 and IPv6 addresses. For full documentation see L<getaddrinfo()|Socket/"($err, @result) = getaddrinfo $host, $service, [$hints]">.
+This method accepts same parameters but instead of result returns handle on which you need to wait for availability to read.
 
 =head2 inet_pton($family, $host)
 
-This method will resolve $host accordingly $family, which may be AF_INET to resolve to IPv4 or AF_INET6 to resolve to IPv6. For full
-documentation see inet_pton() in L<Socket>. This method accepts same parameters but instead of result returns handle on which you need
-to wait for availability to read.
+This method will resolve $host accordingly to $family, which may be AF_INET to resolve to IPv4 or AF_INET6 to resolve to IPv6. For full
+documentation see L<inet_pton()|Socket/"$address = inet_pton $family, $string">. This method accepts same parameters but instead of result returns
+handle on which you need to wait for availability to read.
 
 =head2 inet_aton($host)
 
-This method may be used only for resolving to IPv4. For full documentation see inet_aton() in L<Socket>. This method accepts same
+This method may be used only for resolving to IPv4. For full documentation see L<inet_aton()|Socket/"$ip_address = inet_aton $string">. This method accepts same
 parameters but instead of result returns handle on which you need to wait for availability to read.
 
 =head2 gethostbyname($host)
 
-This method may be used only for resolving to IPv4. For full documentation see C<perldoc -f gethostbyname>. This method accepts
-same parameters but instead of result returns handle on which you need to wait for availability to read.
+This method may be used only for resolving to IPv4. For full documentation see L<gethostbyname()|http://perldoc.perl.org/5.14.0/functions/gethostbyname.html>.
+This method accepts same parameters but instead of result returns handle on which you need to wait for availability to read.
 
 =head2 get_result($handle)
 
