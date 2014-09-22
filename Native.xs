@@ -5,6 +5,11 @@
 #include "ppport.h"
 #include "bstree.h"
 
+#if defined(WIN32) && !defined(UNDER_CE)
+# include <io.h>
+# define write _write
+#endif
+
 typedef struct {
 	pthread_mutex_t mutex;
 	pthread_attr_t thread_attrs;
@@ -24,8 +29,16 @@ typedef struct {
 	int error;
 	struct addrinfo *hostinfo;
 	int type;
-	char ready;
+	DNS_thread_arg *arg;
 } DNS_result;
+
+char *_copy_str(char *orig) {
+	// workaround for http://www.perlmonks.org/?node_id=742205
+	int len = strlen(orig) + 1;
+	char *new = malloc(len*sizeof(char));
+	memcpy(new, orig, len);
+	return new;
+}
 
 void *_getaddrinfo(void *v_arg) {
 	DNS_thread_arg *arg = (DNS_thread_arg *)v_arg;
@@ -35,13 +48,10 @@ void *_getaddrinfo(void *v_arg) {
 	pthread_mutex_unlock(&arg->self->mutex);
 	
 	res->error = getaddrinfo(arg->host, arg->service, arg->hints, &res->hostinfo);
-	if (arg->hints)   free(arg->hints);
-	if (arg->host)    free(arg->host);
-	if (arg->service) free(arg->service);
-	free(arg);
 	
-	res->ready = 1;
+	res->arg = arg;
 	write(res->fd1, "1", 1);
+	
 	return NULL;
 }
 
@@ -120,13 +130,13 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		res->error = 0;
 		res->hostinfo = NULL;
 		res->type = type;
-		res->ready = 0;
+		res->arg = NULL;
 		bstree_put(self->fd_map, fd[0], res);
 		
 		DNS_thread_arg *arg = malloc(sizeof(DNS_thread_arg));
 		arg->self = self;
-		arg->host = strlen(host) ? strdup(host) : NULL;
-		arg->service = strlen(service) ? strdup(service) : NULL;
+		arg->host = strlen(host) ? _copy_str(host) : NULL;
+		arg->service = strlen(service) ? _copy_str(service) : NULL;
 		arg->hints = hints;
 		arg->fd0 = fd[0];
 		
@@ -157,7 +167,7 @@ _get_result(Net_DNS_Native *self, int fd)
 		pthread_mutex_unlock(&self->mutex);
 		
 		if (res == NULL) croak("attempt to get result which doesn't exists");
-		if (!res->ready) {
+		if (!res->arg) {
 			pthread_mutex_lock(&self->mutex);
 			bstree_put(self->fd_map, fd, res);
 			pthread_mutex_unlock(&self->mutex);
@@ -188,6 +198,10 @@ _get_result(Net_DNS_Native *self, int fd)
 		
 		close(fd);
 		close(res->fd1);
+		if (res->arg->hints)   free(res->arg->hints);
+		if (res->arg->host)    free(res->arg->host);
+		if (res->arg->service) free(res->arg->service);
+		free(res->arg);
 		free(res);
 
 void
