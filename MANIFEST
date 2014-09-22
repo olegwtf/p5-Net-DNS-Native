@@ -6,5 +6,6 @@ MANIFEST			This list of files
 Native.xs
 ppport.h
 README
-t/use.t
+t/01_use.t
+t/02_dns.t
 typemap
