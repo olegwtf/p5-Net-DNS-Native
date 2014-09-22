@@ -51,7 +51,11 @@ sub get_result {
 	}
 	
 	if ($type == INET_ATON || $type == INET_PTON || (!wantarray() && $type == GETHOSTBYNAME)) {
-		return $err ? undef : (Socket::unpack_sockaddr_in($res[0]{addr}))[1];
+		return
+		  $err ? undef :
+		  ( $res[0]{family} == Socket::AF_INET ?
+		     Socket::unpack_sockaddr_in($res[0]{addr}) :
+		     Socket::unpack_sockaddr_in6($res[0]{addr}) )[1];
 	}
 	
 	if ($type == GETHOSTBYNAME) {
