@@ -132,7 +132,7 @@ while ($sel->count() > 0) {
 				}
 				
 				ok($r->{family} == AF_INET || $r->{family} == AF_INET6, "correct family");
-				ok(eval {$r->{family} == AF_INET ? unpack_sockaddr_in($r->{addr}) : unpack_sockaddr_in6($r->{addr})}, "has correct address");
+				ok(eval{($r->{family} == AF_INET ? unpack_sockaddr_in($r->{addr}) : unpack_sockaddr_in6($r->{addr}))[1]}, "has correct address") or diag $@;
 			}
 		}
 	}
