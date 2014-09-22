@@ -24,6 +24,7 @@ typedef struct {
 	int error;
 	struct addrinfo *hostinfo;
 	int type;
+	char ready;
 } DNS_result;
 
 void *_getaddrinfo(void *v_arg) {
@@ -39,6 +40,7 @@ void *_getaddrinfo(void *v_arg) {
 	if (arg->service) free(arg->service);
 	free(arg);
 	
+	res->ready = 1;
 	write(res->fd1, "1", 1);
 	return NULL;
 }
@@ -118,6 +120,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		res->error = 0;
 		res->hostinfo = NULL;
 		res->type = type;
+		res->ready = 0;
 		bstree_put(self->fd_map, fd[0], res);
 		
 		DNS_thread_arg *arg = malloc(sizeof(DNS_thread_arg));
@@ -152,6 +155,14 @@ _get_result(Net_DNS_Native *self, int fd)
 		DNS_result *res = bstree_get(self->fd_map, fd);
 		bstree_del(self->fd_map, fd);
 		pthread_mutex_unlock(&self->mutex);
+		
+		if (res == NULL) croak("attempt to get result which doesn't exists");
+		if (!res->ready) {
+			pthread_mutex_lock(&self->mutex);
+			bstree_put(self->fd_map, fd, res);
+			pthread_mutex_unlock(&self->mutex);
+			croak("attempt to get not ready result");
+		}
 		
 		XPUSHs(sv_2mortal(newSViv(res->type)));
 		SV *err = newSV(0);
