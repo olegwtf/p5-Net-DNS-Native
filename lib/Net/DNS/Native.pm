@@ -17,7 +17,7 @@ use constant {
 	GETADDRINFO   => 3
 };
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 XSLoader::load('Net::DNS::Native', $VERSION);
 
