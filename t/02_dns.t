@@ -4,6 +4,10 @@ use Net::DNS::Native;
 use Socket;
 use IO::Select;
 
+unless ($Net::DNS::Native::PERL_OK) {
+	plan skip_all => "This perl doesn't support threaded libraries";
+}
+
 sub inet_ntop {
 	# Socket may has no inet_ntop at least on Windowz :(
 	my ($family, $packed) = @_;

@@ -3,6 +3,12 @@ package Net::DNS::Native;
 use strict;
 use XSLoader;
 use Socket ();
+use Config ();
+
+our $PERL_OK = $Config::Config{usethreads}||$Config::Config{libs}=~/-l?pthread\b/;
+unless ($PERL_OK) {
+	warn "This perl may crash while using this module. See `WARNING' section in the documentation";
+}
 
 use constant {
 	INET_ATON     => 0,
@@ -139,6 +145,17 @@ by getaddrinfo(3) implemented in your system library. Since getaddrinfo() is blo
 call to this function will be done in separate thread. This class uses system native threads and not perl threads. So overhead
 shouldn't bee too big. Disadvantages of this method is that we can't provide timeout for resolving. And default timeout for
 getaddrinfo() on my system is about 40 sec.
+
+=head1 WARNING
+
+To support threaded extensions like this one your perl should be linked with threads library. One of the possible solution
+is to build your perl with perl threads support using C<-Dusethreads> for C<Configure> script. But it is not necessary to
+build threaded perl. So, other solution is to not use C<-Dusethreads> and instead use C<-A prepend:libswanted="pthread ">.
+This will link your perl executable with libpthread.
+
+If this conditions are not met you may get segfault. To check it run this oneliner:
+
+	perl -MConfig -le 'print $Config{usethreads}||$Config{libs}=~/-l?pthread\b/ ? "this perl may use threaded library" : "this perl may segfault with threaded library"'
 
 =head1 METHODS
 
