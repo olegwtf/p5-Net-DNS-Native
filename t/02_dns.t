@@ -4,6 +4,23 @@ use Net::DNS::Native;
 use Socket;
 use IO::Select;
 
+sub inet_ntop {
+	# Socket may has no inet_ntop at least on Windowz :(
+	my ($family, $packed) = @_;
+	
+	if ($family == AF_INET) {
+		return inet_ntoa($packed);
+	}
+	
+	my $saddr_in6 = Net::DNS::Native::pack_sockaddr_in6(0, $packed);
+	my ($err, $ip) = Socket::getnameinfo($saddr_in6, Socket::NI_NUMERICHOST);
+	if ($err) {
+		die $err;
+	}
+	
+	return $ip;
+}
+
 my $ip = inet_aton("google.com");
 unless ($ip) {
 	plan skip_all => "no DNS access on this computer";
@@ -48,7 +65,7 @@ while ($sel->count() > 0) {
 		my @res = $dns->get_result($fh);
 		is(scalar @res, 1, "1 result for inet_pton");
 		if ($res[0]) {
-			ok(eval{Socket::inet_ntop(AF_INET6, $res[0])}, "inet_pton: properly packed ip") or diag $@;
+			ok(eval{inet_ntop(AF_INET6, $res[0])}, "inet_pton: properly packed ip") or diag $@;
 		}
 	}
 }
@@ -68,7 +85,7 @@ while ($sel->count() > 0) {
 		my @res = $dns->get_result($fh);
 		is(scalar @res, 1, "1 result for inet_pton");
 		if ($res[0]) {
-			ok(eval{Socket::inet_ntop(AF_INET, $res[0])}, "inet_pton: properly packed ip") or diag $@;
+			ok(eval{inet_ntop(AF_INET, $res[0])}, "inet_pton: properly packed ip") or diag $@;
 		}
 	}
 }
@@ -132,7 +149,7 @@ while ($sel->count() > 0) {
 				}
 				
 				ok($r->{family} == AF_INET || $r->{family} == AF_INET6, "correct family");
-				ok(eval{($r->{family} == AF_INET ? unpack_sockaddr_in($r->{addr}) : unpack_sockaddr_in6($r->{addr}))[1]}, "has correct address") or diag $@;
+				ok(eval{($r->{family} == AF_INET ? unpack_sockaddr_in($r->{addr}) : Net::DNS::Native::unpack_sockaddr_in6($r->{addr}))[1]}, "has correct address") or diag $@;
 			}
 		}
 	}

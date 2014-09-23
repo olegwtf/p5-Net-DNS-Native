@@ -212,24 +212,20 @@ DESTROY(Net_DNS_Native *self)
 		bstree_destroy(self->fd_map);
 		Safefree(self);
 
-char*
+void
 pack_sockaddr_in6(int port, SV *sv_address)
-	INIT:
-		struct sockaddr_in6 *addr;
-	CODE:
+	PPCODE:
 		int len;
 		char *address = SvPV(sv_address, len);
 		if (len != 16)
 			croak("address length is %d should be 16", len);
 		
-		addr = malloc(sizeof(struct sockaddr_in6));
+		struct sockaddr_in6 *addr = malloc(sizeof(struct sockaddr_in6));
 		memcpy(addr->sin6_addr.s6_addr, address, 16);
 		addr->sin6_family = AF_INET6;
 		addr->sin6_port = port;
 		
-		RETVAL = (char*) addr;
-	OUTPUT:
-		RETVAL
+		XPUSHs(sv_2mortal(newSVpvn((char*) addr, sizeof(struct sockaddr_in6))));
 
 void
 unpack_sockaddr_in6(SV *sv_addr)
