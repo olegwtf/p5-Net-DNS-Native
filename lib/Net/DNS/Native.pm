@@ -5,6 +5,8 @@ use XSLoader;
 use Socket ();
 use Config ();
 
+our $VERSION = '0.04';
+
 our $PERL_OK = $Config::Config{usethreads}||$Config::Config{libs}=~/-l?pthread\b/;
 unless ($PERL_OK) {
 	warn "This perl may crash while using this module. See `WARNING' section in the documentation";
@@ -16,8 +18,6 @@ use constant {
 	GETHOSTBYNAME => 2,
 	GETADDRINFO   => 3
 };
-
-our $VERSION = '0.03';
 
 XSLoader::load('Net::DNS::Native', $VERSION);
 

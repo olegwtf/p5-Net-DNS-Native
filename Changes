@@ -1,5 +1,8 @@
 Revision history for Perl extension Net::DNS::Native
 
+0.04  Wed Sep 24 23:51:28 NOVT 2014
+    - Thread pool support added
+
 0.03  Wed Sep 24 01:28:38 NOVT 2014
     - Check is your perl supports threaded extensions
 
