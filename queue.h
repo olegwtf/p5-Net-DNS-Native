@@ -49,6 +49,13 @@ void* queue_shift(queue *q) {
 	return val;
 }
 
+void queue_clear(queue *q) {
+	queue_element *q_e, *old;
+	for (q_e = q->first; q_e != NULL; old = q_e, q_e = q_e->next, free(old));
+	q->first = q->last = NULL;
+	q->size = 0;
+}
+
 int queue_size(queue *q) {
 	return q->size;
 }

@@ -1,9 +1,11 @@
 #include <pthread.h>
+#include <semaphore.h>
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSUB.h"
 #include "ppport.h"
 #include "bstree.h"
+#include "queue.h"
 
 #if defined(WIN32) && !defined(UNDER_CE)
 # include <io.h>
@@ -13,7 +15,11 @@
 typedef struct {
 	pthread_mutex_t mutex;
 	pthread_attr_t thread_attrs;
+	pthread_t *threads_pool;
+	sem_t semaphore;
 	bstree* fd_map;
+	queue* in_queue;
+	int pool;
 } Net_DNS_Native;
 
 typedef struct {
@@ -55,20 +61,81 @@ void *_getaddrinfo(void *v_arg) {
 	return NULL;
 }
 
+void *_pool_worker(void *v_arg) {
+	Net_DNS_Native *self = (Net_DNS_Native*)v_arg;
+	
+	while (sem_wait(&self->semaphore) == 0) {
+		pthread_mutex_lock(&self->mutex);
+		void *arg = queue_shift(self->in_queue);
+		pthread_mutex_unlock(&self->mutex);
+		
+		if (arg == NULL) {
+			// this was request to quit thread
+			break;
+		}
+		
+		_getaddrinfo(arg);
+	}
+	
+	return NULL;
+}
+
 MODULE = Net::DNS::Native	PACKAGE = Net::DNS::Native
 
 PROTOTYPES: DISABLE
 
 SV*
-new(char* class)
+new(char* class, ...)
 	PREINIT:
 		Net_DNS_Native *self;
 	CODE:
+		if (items % 2 == 0)
+			croak("odd number of parameters");
+		
 		Newx(self, 1, Net_DNS_Native);
+		int i;
+		
+		for (i=1; i<items; i+=2) {
+			if (strEQ(SvPV_nolen(ST(i)), "pool")) {
+				self->pool = SvIV(ST(i+1));
+				if (self->pool < 0) self->pool = 0;
+			}
+			else {
+				warn("unsupported option: %s", SvPV_nolen(ST(i)));
+			}
+		}
+		
 		pthread_attr_init(&self->thread_attrs);
 		pthread_attr_setdetachstate(&self->thread_attrs, PTHREAD_CREATE_DETACHED);
 		pthread_mutex_init(&self->mutex, NULL);
+		sem_init(&self->semaphore, 0, 0);
 		self->fd_map = bstree_new();
+		self->in_queue = NULL;
+		self->threads_pool = NULL;
+		
+		if (self->pool) {
+			self->threads_pool = malloc(self->pool*sizeof(pthread_t));
+			pthread_t tid;
+			int rc, j = 0;
+			
+			for (i=0; i<self->pool; i++) {
+				rc = pthread_create(&tid, NULL, _pool_worker, (void*)self);
+				if (rc == 0) {
+					self->threads_pool[j++] = tid;
+				}
+				else {
+					warn("Can't create thread #%d: %s", i, strerror(rc));
+				}
+			}
+			
+			self->pool = j;
+			if (j == 0) {
+				free(self->threads_pool);
+			}
+			else {
+				self->in_queue = queue_new();
+			}
+		}
 		
 		RETVAL = newSV(0);
 		sv_setref_pv(RETVAL, class, (void *)self);
@@ -131,7 +198,6 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		res->hostinfo = NULL;
 		res->type = type;
 		res->arg = NULL;
-		bstree_put(self->fd_map, fd[0], res);
 		
 		DNS_thread_arg *arg = malloc(sizeof(DNS_thread_arg));
 		arg->self = self;
@@ -140,18 +206,28 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		arg->hints = hints;
 		arg->fd0 = fd[0];
 		
-		pthread_t tid;
-		int rc = pthread_create(&tid, &self->thread_attrs, _getaddrinfo, (void *)arg);
-		if (rc != 0) {
-			if (arg->host)    free(arg->host);
-			if (arg->service) free(arg->service);
-			free(arg);
-			free(res);
-			if (hints) free(hints);
-			bstree_del(self->fd_map, fd[0]);
-			close(fd[0]);
-			close(fd[1]);
-			croak("pthread_create(): %s", strerror(rc));
+		pthread_mutex_lock(&self->mutex);
+		bstree_put(self->fd_map, fd[0], res);
+		if (self->pool) {
+			queue_push(self->in_queue, arg);
+			sem_post(&self->semaphore);
+		}
+		pthread_mutex_unlock(&self->mutex);
+		
+		if (!self->pool) {
+			pthread_t tid;
+			int rc = pthread_create(&tid, &self->thread_attrs, _getaddrinfo, (void *)arg);
+			if (rc != 0) {
+				if (arg->host)    free(arg->host);
+				if (arg->service) free(arg->service);
+				free(arg);
+				free(res);
+				if (hints) free(hints);
+				bstree_del(self->fd_map, fd[0]);
+				close(fd[0]);
+				close(fd[1]);
+				croak("pthread_create(): %s", strerror(rc));
+			}
 		}
 		
 		RETVAL = fd[0];
@@ -193,7 +269,7 @@ _get_result(Net_DNS_Native *self, int fd)
 				XPUSHs(sv_2mortal(newRV_noinc((SV*)hv_info)));
 			}
 			
-			freeaddrinfo(res->hostinfo);
+			if (res->hostinfo) freeaddrinfo(res->hostinfo);
 		}
 		
 		close(fd);
@@ -207,8 +283,36 @@ _get_result(Net_DNS_Native *self, int fd)
 void
 DESTROY(Net_DNS_Native *self)
 	CODE:
+		if (self->pool) {
+			pthread_mutex_lock(&self->mutex);
+			if (queue_size(self->in_queue) > 0) {
+				warn("destroying object while queue for resolver has %d elements", queue_size(self->in_queue));
+				queue_clear(self->in_queue);
+			}
+			pthread_mutex_unlock(&self->mutex);
+			
+			int i;
+			for (i=0; i<self->pool; i++) {
+				sem_post(&self->semaphore);
+			}
+			
+			void *rv;
+			
+			for (i=0; i<self->pool; i++) {
+				pthread_join(self->threads_pool[i], &rv);
+			}
+			
+			queue_destroy(self->in_queue);
+			free(self->threads_pool);
+		}
+		
+		if (bstree_size(self->fd_map) > 0) {
+			warn("destroying object with %d non-received results", bstree_size(self->fd_map));
+		}
+		
 		pthread_attr_destroy(&self->thread_attrs);
 		pthread_mutex_destroy(&self->mutex);
+		sem_destroy(&self->semaphore);
 		bstree_destroy(self->fd_map);
 		Safefree(self);
 
