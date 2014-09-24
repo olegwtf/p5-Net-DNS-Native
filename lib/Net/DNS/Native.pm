@@ -169,7 +169,7 @@ This is a class constructor. Accepts this optional parameters:
 
 If $size>0, will create thread pool with size=$size which will make resolving job. Otherwise will use default behavior:
 create and finish thread for each resolving request. If thread pool is not enough big to process all supplied requests, than this
-requests will be queued until one of the threads will become free to process one request from queue.
+requests will be queued until one of the threads will become free to process next request from the queue.
 
 =back
 
