@@ -93,7 +93,9 @@ new(char* class, ...)
 			croak("odd number of parameters");
 		
 		Newx(self, 1, Net_DNS_Native);
+		
 		int i;
+		self->pool = 0;
 		
 		for (i=1; i<items; i+=2) {
 			if (strEQ(SvPV_nolen(ST(i)), "pool")) {
@@ -124,7 +126,7 @@ new(char* class, ...)
 					self->threads_pool[j++] = tid;
 				}
 				else {
-					warn("Can't create thread #%d: %s", i, strerror(rc));
+					warn("Can't create thread #%d: %s", i+1, strerror(rc));
 				}
 			}
 			
