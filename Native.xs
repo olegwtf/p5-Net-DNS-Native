@@ -274,7 +274,7 @@ _get_result(Net_DNS_Native *self, int fd)
 			if (res->hostinfo) freeaddrinfo(res->hostinfo);
 		}
 		
-		close(fd);
+		//close(fd); // will be closed by perl
 		close(res->fd1);
 		if (res->arg->hints)   free(res->arg->hints);
 		if (res->arg->host)    free(res->arg->host);
