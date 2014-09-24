@@ -13,4 +13,5 @@ pthreads-win32/lib/x86/libpthread.a
 README
 t/01_use.t
 t/02_dns.t
+t/03_pool.t
 typemap
