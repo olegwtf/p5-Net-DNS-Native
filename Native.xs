@@ -5,7 +5,14 @@
 #include "XSUB.h"
 #include "ppport.h"
 #include "bstree.h"
-#include "queue.h"
+
+#pragma push_macro("free")
+#pragma push_macro("malloc")
+#undef free
+#undef malloc
+#include "queue.h" // will be used outside of the main thread
+#pragma pop_macro("free")
+#pragma pop_macro("malloc")
 
 #if defined(WIN32) && !defined(UNDER_CE)
 # include <io.h>
