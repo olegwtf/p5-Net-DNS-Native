@@ -14,18 +14,17 @@
 #pragma pop_macro("free")
 #pragma pop_macro("malloc")
 
-// looks like without this we'll get segfault
+// write() is depricated in favor of _write() - windows way
 #if defined(WIN32) && !defined(UNDER_CE)
 # include <io.h>
 # define write _write
 #endif
 
-// sem_init() is not implemented in this true UNIX system
+// sem_init() is not implemented in this POSIX compatible UNIX system
 #ifdef PERL_DARWIN
 # include <dispatch/dispatch.h>
 # define sem_t dispatch_semaphore_t
-# define sem_init(sem, pshared, value) *sem = dispatch_semaphore_create(value); \
-                                       *sem == NULL ? -1 : 0;
+# define sem_init(sem, pshared, value) ((*sem = dispatch_semaphore_create(value)) == NULL ? -1 : 0)
 # define sem_wait(sem) dispatch_semaphore_wait(*sem, DISPATCH_TIME_FOREVER)
 # define sem_post(sem) dispatch_semaphore_signal(*sem)
 # define sem_destroy(sem) dispatch_release(*sem)
@@ -129,7 +128,6 @@ new(char* class, ...)
 		pthread_attr_init(&self->thread_attrs);
 		pthread_attr_setdetachstate(&self->thread_attrs, PTHREAD_CREATE_DETACHED);
 		pthread_mutex_init(&self->mutex, NULL);
-		sem_init(&self->semaphore, 0, 0);
 		self->fd_map = bstree_new();
 		self->in_queue = NULL;
 		self->threads_pool = NULL;
@@ -155,6 +153,9 @@ new(char* class, ...)
 			}
 			else {
 				self->in_queue = queue_new();
+				
+				if (sem_init(&self->semaphore, 0, 0) != 0)
+					warn("sem_init(): %s", strerror(errno));
 			}
 		}
 		
@@ -325,6 +326,7 @@ DESTROY(Net_DNS_Native *self)
 			
 			queue_destroy(self->in_queue);
 			free(self->threads_pool);
+			sem_destroy(&self->semaphore);
 		}
 		
 		if (bstree_size(self->fd_map) > 0) {
@@ -333,7 +335,6 @@ DESTROY(Net_DNS_Native *self)
 		
 		pthread_attr_destroy(&self->thread_attrs);
 		pthread_mutex_destroy(&self->mutex);
-		sem_destroy(&self->semaphore);
 		bstree_destroy(self->fd_map);
 		Safefree(self);
 
