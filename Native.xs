@@ -134,7 +134,7 @@ new(char* class, ...)
 		
 		if (self->pool) {
 			if (sem_init(&self->semaphore, 0, 0) != 0)
-					warn("sem_init(): %s", strerror(errno));
+				warn("sem_init(): %s", strerror(errno));
 			
 			self->threads_pool = malloc(self->pool*sizeof(pthread_t));
 			pthread_t tid;
@@ -153,10 +153,10 @@ new(char* class, ...)
 			self->pool = j;
 			if (j == 0) {
 				free(self->threads_pool);
+				sem_destroy(&self->semaphore);
 			}
 			else {
 				self->in_queue = queue_new();
-				sem_destroy(&self->semaphore);
 			}
 		}
 		
