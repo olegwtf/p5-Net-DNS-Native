@@ -14,7 +14,7 @@
 #pragma pop_macro("free")
 #pragma pop_macro("malloc")
 
-// write() is depricated in favor of _write() - windows way
+// write() is deprecated in favor of _write() - windows way
 #if defined(WIN32) && !defined(UNDER_CE)
 # include <io.h>
 # define write _write

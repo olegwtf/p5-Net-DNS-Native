@@ -1,5 +1,9 @@
 Revision history for Perl extension Net::DNS::Native
 
+0.05  Fri Sep 26 00:28:55 NOVT 2014
+    - Added forgotten queue.h
+    - Fix pool for MacOS and Windows
+
 0.04  Wed Sep 24 23:51:28 NOVT 2014
     - Thread pool support added
 
