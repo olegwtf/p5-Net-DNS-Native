@@ -56,14 +56,6 @@ typedef struct {
 	DNS_thread_arg *arg;
 } DNS_result;
 
-char *_copy_str(char *orig) {
-	// workaround for http://www.perlmonks.org/?node_id=742205
-	int len = strlen(orig) + 1;
-	char *new = malloc(len*sizeof(char));
-	memcpy(new, orig, len);
-	return new;
-}
-
 void *_getaddrinfo(void *v_arg) {
 	DNS_thread_arg *arg = (DNS_thread_arg *)v_arg;
 	
@@ -224,8 +216,8 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		
 		DNS_thread_arg *arg = malloc(sizeof(DNS_thread_arg));
 		arg->self = self;
-		arg->host = strlen(host) ? _copy_str(host) : NULL;
-		arg->service = strlen(service) ? _copy_str(service) : NULL;
+		arg->host = strlen(host) ? savepv(host) : NULL;
+		arg->service = strlen(service) ? savepv(service) : NULL;
 		arg->hints = hints;
 		arg->fd0 = fd[0];
 		
@@ -298,8 +290,8 @@ _get_result(Net_DNS_Native *self, int fd)
 		//close(fd); // will be closed by perl
 		close(res->fd1);
 		if (res->arg->hints)   free(res->arg->hints);
-		if (res->arg->host)    free(res->arg->host);
-		if (res->arg->service) free(res->arg->service);
+		if (res->arg->host)    Safefree(res->arg->host);
+		if (res->arg->service) Safefree(res->arg->service);
 		free(res->arg);
 		free(res);
 
