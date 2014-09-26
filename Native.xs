@@ -104,7 +104,7 @@ new(char* class, ...)
 		
 		Newx(self, 1, Net_DNS_Native);
 		
-		int i;
+		int i, rc;
 		self->pool = 0;
 		
 		for (i=1; i<items; i+=2) {
@@ -117,20 +117,39 @@ new(char* class, ...)
 			}
 		}
 		
-		pthread_attr_init(&self->thread_attrs);
-		pthread_attr_setdetachstate(&self->thread_attrs, PTHREAD_CREATE_DETACHED);
-		pthread_mutex_init(&self->mutex, NULL);
-		self->fd_map = bstree_new();
+		char attr_ok = 0, mutex_ok = 0, sem_ok = 0;
+		
+		rc = pthread_attr_init(&self->thread_attrs);
+		if (rc != 0) {
+			warn("pthread_attr_init(): %s", strerror(rc));
+			goto FAIL;
+		}
+		attr_ok = 1;
+		rc = pthread_attr_setdetachstate(&self->thread_attrs, PTHREAD_CREATE_DETACHED);
+		if (rc != 0) {
+			warn("pthread_attr_setdetachstate(): %s", strerror(rc));
+			goto FAIL;
+		}
+		rc = pthread_mutex_init(&self->mutex, NULL);
+		if (rc != 0) {
+			warn("pthread_mutex_init(): %s", strerror(rc));
+			goto FAIL;
+		}
+		mutex_ok = 1;
+		
 		self->in_queue = NULL;
 		self->threads_pool = NULL;
 		
 		if (self->pool) {
-			if (sem_init(&self->semaphore, 0, 0) != 0)
+			if (sem_init(&self->semaphore, 0, 0) != 0) {
 				warn("sem_init(): %s", strerror(errno));
+				goto FAIL;
+			}
+			sem_ok = 1;
 			
 			self->threads_pool = malloc(self->pool*sizeof(pthread_t));
 			pthread_t tid;
-			int rc, j = 0;
+			int j = 0;
 			
 			for (i=0; i<self->pool; i++) {
 				rc = pthread_create(&tid, NULL, _pool_worker, (void*)self);
@@ -142,18 +161,27 @@ new(char* class, ...)
 				}
 			}
 			
-			self->pool = j;
 			if (j == 0) {
-				free(self->threads_pool);
-				sem_destroy(&self->semaphore);
+				goto FAIL;
 			}
-			else {
-				self->in_queue = queue_new();
-			}
+			
+			self->pool = j;
+			self->in_queue = queue_new();
 		}
 		
+		self->fd_map = bstree_new();
 		RETVAL = newSV(0);
 		sv_setref_pv(RETVAL, class, (void *)self);
+		
+		if (0) {
+			FAIL:
+				if (attr_ok) pthread_attr_destroy(&self->thread_attrs);
+				if (mutex_ok) pthread_mutex_destroy(&self->mutex);
+				if (sem_ok) sem_destroy(&self->semaphore);
+				if (self->threads_pool) free(self->threads_pool);
+				Safefree(self);
+				RETVAL = &PL_sv_undef;
+		}
 	OUTPUT:
 		RETVAL
 
