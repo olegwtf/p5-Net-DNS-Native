@@ -1,5 +1,9 @@
 Revision history for Perl extension Net::DNS::Native
 
+0.06  Mon Sep 29 00:39:03 NOVT 2014
+    - `extra_thead' option added
+    - tests: try to workaround cases when getnameinfo() doesn't know about AF_INET6
+
 0.05  Fri Sep 26 00:28:55 NOVT 2014
     - Added forgotten queue.h
     - Fix pool for MacOS and Windows
