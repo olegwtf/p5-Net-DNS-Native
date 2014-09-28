@@ -34,4 +34,25 @@ while ($sel->count() > 0) {
 	}
 }
 
+$dns = Net::DNS::Native->new(pool => 1, extra_thread => 1);
+$sel = IO::Select->new();
+
+for my $domain ('google.com', 'google.ru', 'google.cy', 'mail.ru', 'mail.com', 'mail.net') {
+	my $sock = $dns->gethostbyname($domain);
+	$sel->add($sock);
+}
+
+while ($sel->count() > 0) {
+	my @ready = $sel->can_read(60);
+	ok(@ready > 0, 'extra_thread: resolving took less than 60 sec');
+	
+	for my $sock (@ready) {
+		$sel->remove($sock);
+		
+		if (my $ip = $dns->get_result($sock)) {
+			ok(eval{inet_ntoa($ip)}, 'extra_thread: correct ipv4 address');
+		}
+	}
+}
+
 done_testing;
