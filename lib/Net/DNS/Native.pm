@@ -167,9 +167,15 @@ This is a class constructor. Accepts this optional parameters:
 
 =item pool => $size
 
-If $size>0, will create thread pool with size=$size which will make resolving job. Otherwise will use default behavior:
+If $size>0 will create thread pool with size=$size which will make resolving job. Otherwise will use default behavior:
 create and finish thread for each resolving request. If thread pool is not enough big to process all supplied requests, than this
 requests will be queued until one of the threads will become free to process next request from the queue.
+
+=item extra_thread => $bool
+
+If pool option specified and $bool has true value will create temporary extra thread for each request that can't be handled by the
+pool (when all workers in the pool are busy) instead of pushing it to the queue. This temporary thread will be finished immediatly
+after it will process request.
 
 =back
 
