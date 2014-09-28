@@ -19,7 +19,13 @@ sub inet_ntop {
 	my $saddr_in6 = Net::DNS::Native::pack_sockaddr_in6(0, $packed);
 	my ($err, $ip) = Socket::getnameinfo($saddr_in6, Socket::NI_NUMERICHOST);
 	if ($err) {
-		die $err;
+		if ($err =~ /ai_family not supported/i) {
+			$err = '';
+			$ip = '0.0.0.0';
+		}
+		else {
+			die $err;
+		}
 	}
 	
 	return $ip;
