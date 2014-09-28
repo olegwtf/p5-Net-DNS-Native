@@ -38,6 +38,8 @@ typedef struct {
 	bstree* fd_map;
 	queue* in_queue;
 	int pool;
+	char extra_thread;
+	int busy_threads;
 } Net_DNS_Native;
 
 typedef struct {
@@ -77,6 +79,7 @@ void *_pool_worker(void *v_arg) {
 	while (sem_wait(&self->semaphore) == 0) {
 		pthread_mutex_lock(&self->mutex);
 		void *arg = queue_shift(self->in_queue);
+		if (arg != NULL) self->busy_threads++;
 		pthread_mutex_unlock(&self->mutex);
 		
 		if (arg == NULL) {
@@ -85,6 +88,10 @@ void *_pool_worker(void *v_arg) {
 		}
 		
 		_getaddrinfo(arg);
+		
+		pthread_mutex_lock(&self->mutex);
+		self->busy_threads--;
+		pthread_mutex_unlock(&self->mutex);
 	}
 	
 	return NULL;
@@ -106,11 +113,19 @@ new(char* class, ...)
 		
 		int i, rc;
 		self->pool = 0;
+		self->extra_thread = 0;
+		self->busy_threads = 0;
+		char *opt;
 		
 		for (i=1; i<items; i+=2) {
-			if (strEQ(SvPV_nolen(ST(i)), "pool")) {
+			opt = SvPV_nolen(ST(i));
+			
+			if (strEQ(opt, "pool")) {
 				self->pool = SvIV(ST(i+1));
 				if (self->pool < 0) self->pool = 0;
+			}
+			else if (strEQ(opt, "extra_thread")) {
+				self->extra_thread = SvIV(ST(i+1));
 			}
 			else {
 				warn("unsupported option: %s", SvPV_nolen(ST(i)));
@@ -249,15 +264,22 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		arg->hints = hints;
 		arg->fd0 = fd[0];
 		
+		char need_extra_thread = 0;
+		
 		pthread_mutex_lock(&self->mutex);
 		bstree_put(self->fd_map, fd[0], res);
 		if (self->pool) {
-			queue_push(self->in_queue, arg);
-			sem_post(&self->semaphore);
+			if (self->extra_thread && self->busy_threads == self->pool) {
+				need_extra_thread = 1;
+			}
+			else {
+				queue_push(self->in_queue, arg);
+				sem_post(&self->semaphore);
+			}
 		}
 		pthread_mutex_unlock(&self->mutex);
 		
-		if (!self->pool) {
+		if (!self->pool || need_extra_thread) {
 			pthread_t tid;
 			int rc = pthread_create(&tid, &self->thread_attrs, _getaddrinfo, (void *)arg);
 			if (rc != 0) {
