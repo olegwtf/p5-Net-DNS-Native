@@ -12,6 +12,32 @@ typedef struct {
 	int size;
 } queue;
 
+typedef struct {
+	queue_element *prev;
+	queue_element *cur;
+} queue_iterator;
+
+queue_iterator* queue_iterator_new(queue *q) {
+	queue_iterator *it = malloc(sizeof(queue_iterator));
+	it->prev = NULL;
+	it->cur = q->first;
+}
+
+void queue_iterator_next(queue_iterator *it) {
+	it->prev = it->cur;
+	if (it->cur != NULL) {
+		it->cur = it->cur->next;
+	}
+}
+
+char queue_iterator_end(queue_iterator *it) {
+	return it->cur == NULL;
+}
+
+void queue_iterator_destroy(queue_iterator *it) {
+	free(it);
+}
+
 queue* queue_new() {
 	queue *q = malloc(sizeof(queue));
 	q->first = q->last = NULL;
@@ -47,6 +73,34 @@ void* queue_shift(queue *q) {
 	
 	q->size--;
 	return val;
+}
+
+void* queue_at(queue *q, queue_iterator *it) {
+	if (it->cur == NULL)
+		return NULL;
+	
+	return it->cur->val;
+}
+
+void queue_del(queue *q, queue_iterator *it) {
+	if (it->cur == NULL)
+		return;
+	
+	if (it->prev != NULL) {
+		it->prev->next = it->cur->next;
+	}
+	else {
+		q->first = it->cur->next;
+	}
+	
+	if (q->last == it->cur)
+		q->last = it->prev;
+	
+	queue_element *cur = it->cur;
+	free(cur);
+	it->cur = it->cur->next;
+	
+	q->size--;
 }
 
 void queue_clear(queue *q) {

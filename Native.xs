@@ -40,6 +40,7 @@ typedef struct {
 	int pool;
 	char extra_thread;
 	int busy_threads;
+	queue* tout_queue;
 } Net_DNS_Native;
 
 typedef struct {
@@ -58,6 +59,11 @@ typedef struct {
 	DNS_thread_arg *arg;
 } DNS_result;
 
+typedef struct {
+	int fd0;
+	SV* sock0;
+} DNS_timedout;
+
 void *_getaddrinfo(void *v_arg) {
 	DNS_thread_arg *arg = (DNS_thread_arg *)v_arg;
 	
@@ -67,8 +73,10 @@ void *_getaddrinfo(void *v_arg) {
 	
 	res->error = getaddrinfo(arg->host, arg->service, arg->hints, &res->hostinfo);
 	
+	pthread_mutex_lock(&arg->self->mutex);
 	res->arg = arg;
 	write(res->fd1, "1", 1);
+	pthread_mutex_unlock(&arg->self->mutex);
 	
 	return NULL;
 }
@@ -185,6 +193,7 @@ new(char* class, ...)
 		}
 		
 		self->fd_map = bstree_new();
+		self->tout_queue = queue_new();
 		RETVAL = newSV(0);
 		sv_setref_pv(RETVAL, class, (void *)self);
 		
@@ -267,6 +276,32 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		char need_extra_thread = 0;
 		
 		pthread_mutex_lock(&self->mutex);
+		if (queue_size(self->tout_queue)) {
+			queue_iterator *it = queue_iterator_new(self->tout_queue);
+			DNS_timedout *tout;
+			DNS_result *res;
+			
+			while (!queue_iterator_end(it)) {
+				tout = queue_at(self->tout_queue, it);
+				res = bstree_get(self->fd_map, tout->fd0);
+				if (res == NULL) {
+					SvREFCNT_dec(tout->sock0);
+					free(tout);
+					queue_del(self->tout_queue, it);
+					continue;
+				}
+				
+				if (res->arg) {
+					// ready
+					// free arg
+				}
+				
+				queue_iterator_next(it);
+			}
+			
+			queue_iterator_destroy(it);
+		}
+		
 		bstree_put(self->fd_map, fd[0], res);
 		if (self->pool) {
 			if (self->extra_thread && self->busy_threads == self->pool) {
@@ -346,6 +381,27 @@ _get_result(Net_DNS_Native *self, int fd)
 		free(res);
 
 void
+_timedout(Net_DNS_Native *self, SV *sock, int fd)
+	PPCODE:
+		char unknown = 0;
+		
+		pthread_mutex_lock(&self->mutex);
+		if (bstree_get(self->fd_map, fd) == NULL) {
+			unknown = 1;
+		}
+		else {
+			sock = SvREFCNT_inc(sock);
+			DNS_timedout *tout = malloc(sizeof(DNS_timedout));
+			tout->fd0 = fd;
+			tout->sock0 = sock;
+			queue_push(self->tout_queue, tout);
+		}
+		pthread_mutex_unlock(&self->mutex);
+		
+		if (unknown)
+			croak("attempt to set timeout on unknown source");
+
+void
 DESTROY(Net_DNS_Native *self)
 	CODE:
 		if (self->pool) {
@@ -379,6 +435,7 @@ DESTROY(Net_DNS_Native *self)
 		pthread_attr_destroy(&self->thread_attrs);
 		pthread_mutex_destroy(&self->mutex);
 		bstree_destroy(self->fd_map);
+		queue_destroy(self->tout_queue);
 		Safefree(self);
 
 void

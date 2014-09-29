@@ -71,6 +71,11 @@ sub get_result {
 	}
 }
 
+sub timedout {
+	my ($self, $sock) = @_;
+	$self->_timedout($sock, fileno($sock));
+}
+
 1;
 
 __END__
