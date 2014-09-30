@@ -20,7 +20,7 @@
 # define write _write
 #endif
 
-// sem_init() is not implemented in this POSIX compatible UNIX system
+// unnamed semaphores are not implemented in this POSIX compatible UNIX system
 #ifdef PERL_DARWIN
 # include <dispatch/dispatch.h>
 # define sem_t dispatch_semaphore_t
