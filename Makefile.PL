@@ -18,7 +18,7 @@ WriteMakefile(
 	ABSTRACT_FROM  => 'lib/Net/DNS/Native.pm',
 	AUTHOR         => 'Oleg G <oleg@cpan.org>',
 	LIBS           => ['-lpthread'],
-	PREREQ_PM      => { 'Socket' => 1.95 },
+	PREREQ_PM      => { 'Socket' => 1.94 },
 	BUILD_REQUIRES => { 'Test::More' => 0.88 },
 	@additional
 );
