@@ -105,6 +105,45 @@ void *_pool_worker(void *v_arg) {
 	return NULL;
 }
 
+void *_free_timedout(Net_DNS_Native *self) {
+	if (queue_size(self->tout_queue)) {
+		queue_iterator *it = queue_iterator_new(self->tout_queue);
+		DNS_timedout *tout;
+		DNS_result *res;
+		
+		while (!queue_iterator_end(it)) {
+			tout = queue_at(self->tout_queue, it);
+			res = bstree_get(self->fd_map, tout->fd0);
+			if (res == NULL) {
+				goto FREE_TOUT;
+			}
+			
+			if (res->arg) {
+				bstree_del(self->fd_map, tout->fd0);
+				if (!res->error && res->hostinfo)
+					freeaddrinfo(res->hostinfo);
+				
+				close(res->fd1);
+				if (res->arg->hints)   free(res->arg->hints);
+				if (res->arg->host)    Safefree(res->arg->host);
+				if (res->arg->service) Safefree(res->arg->service);
+				free(res->arg);
+				free(res);
+				
+				FREE_TOUT:
+					SvREFCNT_dec(tout->sock0);
+					queue_del(self->tout_queue, it);
+					free(tout);
+					continue;
+			}
+			
+			queue_iterator_next(it);
+		}
+		
+		queue_iterator_destroy(it);
+	}
+}
+
 MODULE = Net::DNS::Native	PACKAGE = Net::DNS::Native
 
 PROTOTYPES: DISABLE
@@ -276,32 +315,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		char need_extra_thread = 0;
 		
 		pthread_mutex_lock(&self->mutex);
-		if (queue_size(self->tout_queue)) {
-			queue_iterator *it = queue_iterator_new(self->tout_queue);
-			DNS_timedout *tout;
-			DNS_result *res;
-			
-			while (!queue_iterator_end(it)) {
-				tout = queue_at(self->tout_queue, it);
-				res = bstree_get(self->fd_map, tout->fd0);
-				if (res == NULL) {
-					SvREFCNT_dec(tout->sock0);
-					free(tout);
-					queue_del(self->tout_queue, it);
-					continue;
-				}
-				
-				if (res->arg) {
-					// ready
-					// free arg
-				}
-				
-				queue_iterator_next(it);
-			}
-			
-			queue_iterator_destroy(it);
-		}
-		
+		_free_timedout(self);
 		bstree_put(self->fd_map, fd[0], res);
 		if (self->pool) {
 			if (self->extra_thread && self->busy_threads == self->pool) {
@@ -404,6 +418,10 @@ _timedout(Net_DNS_Native *self, SV *sock, int fd)
 void
 DESTROY(Net_DNS_Native *self)
 	CODE:
+		pthread_mutex_lock(&self->mutex);
+		_free_timedout(self);
+		pthread_mutex_unlock(&self->mutex);
+		
 		if (self->pool) {
 			pthread_mutex_lock(&self->mutex);
 			if (queue_size(self->in_queue) > 0) {
