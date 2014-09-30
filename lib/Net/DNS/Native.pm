@@ -148,8 +148,7 @@ Net::DNS::Native - non-blocking system DNS resolver
 This class provides several methods for host name resolution. It is designed to be used with event loops. All resolving are done
 by getaddrinfo(3) implemented in your system library. Since getaddrinfo() is blocking function and we don't want to block,
 call to this function will be done in separate thread. This class uses system native threads and not perl threads. So overhead
-shouldn't bee too big. Disadvantages of this method is that we can't provide timeout for resolving. And default timeout for
-getaddrinfo() on my system is about 40 sec.
+shouldn't bee too big.
 
 =head1 WARNING
 
@@ -214,6 +213,15 @@ C<($name,$aliases,$addrtype,$length,@addrs)> in list context.
 
 B<NOTE:> it is important to call get_result() on returned handle when it will become ready for read. Because this method destroys resources
 associated with this handle. Otherwise you will get memory leaks.
+
+=head2 timedout($handle)
+
+Mark resolving operation associated with this handle as timed out. This will not interrupt resolving operation (because there is no way to interrupt getaddrinfo(3) correctly),
+but will automatically discard any results returned when resolving will be done. So, after C<timedout($handle)> you can forget about C<$handle> and
+associated resolving operation. And don't need to call C<get_result($handle)> to destroy resources associated with this handle. Furthermore, if you are using thread pool
+and all threads in pool are busy and C<extra_thread> option not specified, but 1 resolving operation from this pool marked as timed out and you'll add one more resolving operation,
+this operation will not be queued. Instead of this 1 temporary extra thread will be created to process this operation. So you can think about C<timedout> like about real interrupter of
+long running resolving operation. But you are warned how it really works.
 
 =head1 AUTHOR
 
