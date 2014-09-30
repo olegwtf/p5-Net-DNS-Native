@@ -4,31 +4,10 @@ use Net::DNS::Native;
 use Socket;
 use IO::Select;
 
+use constant HAS_INET_NTOP => eval { Socket::inet_ntop(AF_INET6, "\0"x16) };
+
 unless ($Net::DNS::Native::PERL_OK) {
 	plan skip_all => "This perl doesn't support threaded libraries";
-}
-
-sub inet_ntop {
-	# Socket may has no inet_ntop at least on Windowz :(
-	my ($family, $packed) = @_;
-	
-	if ($family == AF_INET) {
-		return inet_ntoa($packed);
-	}
-	
-	my $saddr_in6 = Net::DNS::Native::pack_sockaddr_in6(0, $packed);
-	my ($err, $ip) = Socket::getnameinfo($saddr_in6, Socket::NI_NUMERICHOST);
-	if ($err) {
-		if ($err =~ /ai_family not supported/i) {
-			$err = '';
-			$ip = '0.0.0.0';
-		}
-		else {
-			die $err;
-		}
-	}
-	
-	return $ip;
 }
 
 my $ip = inet_aton("google.com");
@@ -74,21 +53,25 @@ while ($sel->count() > 0) {
 
 # inet_pton
 # AF_INET6
-for my $host ("google.com", "google.ru", "google.cy") {
-	my $fh = $dns->inet_pton(AF_INET6, $host);
-	$sel->add($fh);
-}
-
-while ($sel->count() > 0) {
-	my @ready = $sel->can_read(60);
-	ok(scalar @ready, "inet_pton: resolved less then 60 sec");
+SKIP: {
+	skip 'Socket::inet_ntop() not implemented', 0 unless HAS_INET_NTOP;
 	
-	for my $fh (@ready) {
-		$sel->remove($fh);
-		my @res = $dns->get_result($fh);
-		is(scalar @res, 1, "1 result for inet_pton");
-		if ($res[0]) {
-			ok(eval{inet_ntop(AF_INET6, $res[0])}, "inet_pton: properly packed ip") or diag $@;
+	for my $host ("google.com", "google.ru", "google.cy") {
+		my $fh = $dns->inet_pton(AF_INET6, $host);
+		$sel->add($fh);
+	}
+
+	while ($sel->count() > 0) {
+		my @ready = $sel->can_read(60);
+		ok(scalar @ready, "inet_pton: resolved less then 60 sec");
+		
+		for my $fh (@ready) {
+			$sel->remove($fh);
+			my @res = $dns->get_result($fh);
+			is(scalar @res, 1, "1 result for inet_pton");
+			if ($res[0]) {
+				ok(eval{Socket::inet_ntop(AF_INET6, $res[0])}, "inet_pton: properly packed ip") or diag $@;
+			}
 		}
 	}
 }
@@ -108,7 +91,7 @@ while ($sel->count() > 0) {
 		my @res = $dns->get_result($fh);
 		is(scalar @res, 1, "1 result for inet_pton");
 		if ($res[0]) {
-			ok(eval{inet_ntop(AF_INET, $res[0])}, "inet_pton: properly packed ip") or diag $@;
+			ok(eval{inet_ntoa($res[0])}, "inet_pton: properly packed ip") or diag $@;
 		}
 	}
 }
