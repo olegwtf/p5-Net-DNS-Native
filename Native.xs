@@ -39,6 +39,7 @@ typedef struct {
 	queue* in_queue;
 	int pool;
 	char extra_thread;
+	int extra_threads_cnt;
 	int busy_threads;
 	queue* tout_queue;
 } Net_DNS_Native;
@@ -49,6 +50,7 @@ typedef struct {
 	char *service;
 	struct addrinfo *hints;
 	int fd0;
+	char extra;
 } DNS_thread_arg;
 
 typedef struct {
@@ -75,6 +77,7 @@ void *_getaddrinfo(void *v_arg) {
 	
 	pthread_mutex_lock(&arg->self->mutex);
 	res->arg = arg;
+	if (arg->extra) arg->self->extra_threads_cnt--;
 	write(res->fd1, "1", 1);
 	pthread_mutex_unlock(&arg->self->mutex);
 	
@@ -161,6 +164,7 @@ new(char* class, ...)
 		int i, rc;
 		self->pool = 0;
 		self->extra_thread = 0;
+		self->extra_threads_cnt = 0;
 		self->busy_threads = 0;
 		char *opt;
 		
@@ -311,15 +315,15 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		arg->service = strlen(service) ? savepv(service) : NULL;
 		arg->hints = hints;
 		arg->fd0 = fd[0];
-		
-		char need_extra_thread = 0;
+		arg->extra = 0;
 		
 		pthread_mutex_lock(&self->mutex);
 		_free_timedout(self);
 		bstree_put(self->fd_map, fd[0], res);
 		if (self->pool) {
-			if (self->extra_thread && self->busy_threads == self->pool) {
-				need_extra_thread = 1;
+			if (self->busy_threads == self->pool && (self->extra_thread || queue_size(self->tout_queue) > self->extra_threads_cnt)) {
+				arg->extra = 1;
+				self->extra_threads_cnt++;
 			}
 			else {
 				queue_push(self->in_queue, arg);
@@ -328,7 +332,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		}
 		pthread_mutex_unlock(&self->mutex);
 		
-		if (!self->pool || need_extra_thread) {
+		if (!self->pool || arg->extra) {
 			pthread_t tid;
 			int rc = pthread_create(&tid, &self->thread_attrs, _getaddrinfo, (void *)arg);
 			if (rc != 0) {
