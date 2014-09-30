@@ -108,7 +108,7 @@ void *_pool_worker(void *v_arg) {
 	return NULL;
 }
 
-void *_free_timedout(Net_DNS_Native *self) {
+void _free_timedout(Net_DNS_Native *self) {
 	if (queue_size(self->tout_queue)) {
 		queue_iterator *it = queue_iterator_new(self->tout_queue);
 		DNS_timedout *tout;

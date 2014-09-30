@@ -21,6 +21,8 @@ queue_iterator* queue_iterator_new(queue *q) {
 	queue_iterator *it = malloc(sizeof(queue_iterator));
 	it->prev = NULL;
 	it->cur = q->first;
+	
+	return it;
 }
 
 void queue_iterator_next(queue_iterator *it) {
