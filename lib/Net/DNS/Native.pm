@@ -5,7 +5,7 @@ use XSLoader;
 use Socket ();
 use Config ();
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 our $PERL_OK = $Config::Config{usethreads}||$Config::Config{libs}=~/-l?pthread\b/;
 unless ($PERL_OK) {
