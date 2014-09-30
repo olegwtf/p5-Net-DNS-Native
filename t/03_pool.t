@@ -18,7 +18,12 @@ my $sel = IO::Select->new();
 
 for my $domain ('google.com', 'google.ru', 'google.cy', 'mail.ru', 'mail.com', 'mail.net') {
 	my $sock = $dns->gethostbyname($domain);
-	$sel->add($sock);
+	if ($domain eq 'mail.ru') {
+		$dns->timedout($sock);
+	}
+	else {
+		$sel->add($sock);
+	}
 }
 
 while ($sel->count() > 0) {
@@ -39,7 +44,12 @@ $sel = IO::Select->new();
 
 for my $domain ('google.com', 'google.ru', 'google.cy', 'mail.ru', 'mail.com', 'mail.net') {
 	my $sock = $dns->gethostbyname($domain);
-	$sel->add($sock);
+	if ($domain eq 'mail.ru') {
+		$dns->timedout($sock);
+	}
+	else {
+		$sel->add($sock);
+	}
 }
 
 while ($sel->count() > 0) {

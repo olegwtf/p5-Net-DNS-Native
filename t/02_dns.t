@@ -45,16 +45,29 @@ for my $host ("google.com", "google.ru", "google.cy") {
 	$sel->add($fh);
 }
 
+my $i = 0;
+
 while ($sel->count() > 0) {
-	my @ready = $sel->can_read(60);
-	ok(scalar @ready, "inet_aton: resolved less then 60 sec");
-	
-	for my $fh (@ready) {
-		$sel->remove($fh);
-		my @res = $dns->get_result($fh);
-		is(scalar @res, 1, "1 result for inet_aton");
-		if ($res[0]) {
-			ok(eval{inet_ntoa($res[0])}, "inet_aton: properly packed ip") or diag $@;
+	if (++$i > 2) {
+		my @timedout = $sel->handles;
+		diag(scalar(@timedout) . " are timed out");
+		
+		for my $sock (@timedout) {
+			$dns->timedout($sock);
+			$sel->remove($sock);
+		}
+	}
+	else {
+		my @ready = $sel->can_read(60);
+		ok(scalar @ready, "inet_aton: resolved less then 60 sec");
+		
+		for my $fh (@ready) {
+			$sel->remove($fh);
+			my @res = $dns->get_result($fh);
+			is(scalar @res, 1, "1 result for inet_aton");
+			if ($res[0]) {
+				ok(eval{inet_ntoa($res[0])}, "inet_aton: properly packed ip") or diag $@;
+			}
 		}
 	}
 }
