@@ -97,8 +97,8 @@ void queue_del(queue *q, queue_iterator *it) {
 		q->last = it->prev;
 	
 	queue_element *cur = it->cur;
-	free(cur);
 	it->cur = it->cur->next;
+	free(cur);
 	
 	q->size--;
 }
