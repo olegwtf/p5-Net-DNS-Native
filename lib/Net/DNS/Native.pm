@@ -181,6 +181,25 @@ If pool option specified and $bool has true value will create temporary extra th
 pool (when all workers in the pool are busy) instead of pushing it to the queue. This temporary thread will be finished immediatly
 after it will process request.
 
+=item notify_on_begin => $bool
+
+Extra mechanizm to notify caller that resolving for some host started. This is usefull for those who uses thread pool without C<extra_thread>
+option. When pool becomes full new queries will be queued, so you can specify C<$bool> with true value if you want to receive notifications
+when resolving will be really started. To notify it will simply make C<$handle> received by methods below readable. After that you will need to read
+data from this handle to make it non readable again, so you can receive next notification, when host resolving will be done. There will be 1 byte
+of data which you should read. C<"1"> for notification about start of the resolving and C<"2"> for notification about finish of the resolving.
+
+	my $dns = Net::DNS::Native->new(pool => 1, notify_on_begin => 1);
+	my $handle = $dns->inet_aton("google.com");
+	my $sel = IO::Select->new($handle);
+	$sel->can_read(); # wait "begin" notification
+	sysread($handle, my $buf, 1); # $buf eq "1", $handle is not readable again
+	$sel->can_read(); # wait "finish" notification
+	# resolving done
+	# we can sysread($handle, $buf, 1); again and $buf will be eq "2"
+	# but this is not necessarily
+	my $ip = $dns->get_result($handle);
+
 =back
 
 =head2 getaddrinfo($host, $service, $hints)
