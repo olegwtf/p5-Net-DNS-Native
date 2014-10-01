@@ -39,6 +39,7 @@ typedef struct {
 	queue* in_queue;
 	int pool;
 	char extra_thread;
+	char notify_on_begin;
 	int extra_threads_cnt;
 	int busy_threads;
 	queue* tout_queue;
@@ -73,12 +74,14 @@ void *_getaddrinfo(void *v_arg) {
 	DNS_result *res = bstree_get(arg->self->fd_map, arg->fd0);
 	pthread_mutex_unlock(&arg->self->mutex);
 	
+	if (arg->self->notify_on_begin)
+		write(res->fd1, "1", 1);
 	res->error = getaddrinfo(arg->host, arg->service, arg->hints, &res->hostinfo);
 	
 	pthread_mutex_lock(&arg->self->mutex);
 	res->arg = arg;
 	if (arg->extra) arg->self->extra_threads_cnt--;
-	write(res->fd1, "1", 1);
+	write(res->fd1, "2", 1);
 	pthread_mutex_unlock(&arg->self->mutex);
 	
 	return NULL;
@@ -163,6 +166,7 @@ new(char* class, ...)
 		
 		int i, rc;
 		self->pool = 0;
+		self->notify_on_begin = 0;
 		self->extra_thread = 0;
 		self->extra_threads_cnt = 0;
 		self->busy_threads = 0;
@@ -177,6 +181,9 @@ new(char* class, ...)
 			}
 			else if (strEQ(opt, "extra_thread")) {
 				self->extra_thread = SvIV(ST(i+1));
+			}
+			else if (strEQ(opt, "notify_on_begin")) {
+				self->notify_on_begin = SvIV(ST(i+1));
 			}
 			else {
 				warn("unsupported option: %s", SvPV_nolen(ST(i)));
