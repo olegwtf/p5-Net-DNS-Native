@@ -15,4 +15,5 @@ README
 t/01_use.t
 t/02_dns.t
 t/03_pool.t
+t/04_notify_on_begin.t
 typemap
