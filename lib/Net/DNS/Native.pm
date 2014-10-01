@@ -34,17 +34,17 @@ sub getaddrinfo {
 
 sub inet_aton {
 	my $self = shift;
-	_fd2socket $self->_getaddrinfo($_[0], undef, {family => Socket::AF_INET}, INET_ATON);
+	_fd2socket $self->_getaddrinfo($_[0], undef, {family => Socket::AF_INET, socktype => Socket::SOCK_STREAM}, INET_ATON);
 }
 
 sub inet_pton {
 	my $self = shift;
-	_fd2socket $self->_getaddrinfo($_[1], undef, {family => $_[0]}, INET_PTON);
+	_fd2socket $self->_getaddrinfo($_[1], undef, {family => $_[0], socktype => Socket::SOCK_STREAM}, INET_PTON);
 }
 
 sub gethostbyname {
 	my $self = shift;
-	_fd2socket $self->_getaddrinfo($_[0], undef, {family => Socket::AF_INET, flags => Socket::AI_CANONNAME}, GETHOSTBYNAME);
+	_fd2socket $self->_getaddrinfo($_[0], undef, {family => Socket::AF_INET, flags => Socket::AI_CANONNAME, socktype => Socket::SOCK_STREAM}, GETHOSTBYNAME);
 }
 
 sub get_result {
