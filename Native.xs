@@ -67,7 +67,7 @@ typedef struct {
 	SV* sock0;
 } DNS_timedout;
 
-void *_getaddrinfo(void *v_arg) {
+void *DNS_getaddrinfo(void *v_arg) {
 	DNS_thread_arg *arg = (DNS_thread_arg *)v_arg;
 	
 	pthread_mutex_lock(&arg->self->mutex);
@@ -87,7 +87,7 @@ void *_getaddrinfo(void *v_arg) {
 	return NULL;
 }
 
-void *_pool_worker(void *v_arg) {
+void *DNS_pool_worker(void *v_arg) {
 	Net_DNS_Native *self = (Net_DNS_Native*)v_arg;
 	
 	while (sem_wait(&self->semaphore) == 0) {
@@ -101,7 +101,7 @@ void *_pool_worker(void *v_arg) {
 			break;
 		}
 		
-		_getaddrinfo(arg);
+		DNS_getaddrinfo(arg);
 		
 		pthread_mutex_lock(&self->mutex);
 		self->busy_threads--;
@@ -111,7 +111,7 @@ void *_pool_worker(void *v_arg) {
 	return NULL;
 }
 
-void _free_timedout(Net_DNS_Native *self) {
+void DNS_free_timedout(Net_DNS_Native *self) {
 	if (queue_size(self->tout_queue)) {
 		queue_iterator *it = queue_iterator_new(self->tout_queue);
 		DNS_timedout *tout;
@@ -225,7 +225,7 @@ new(char* class, ...)
 			int j = 0;
 			
 			for (i=0; i<self->pool; i++) {
-				rc = pthread_create(&tid, NULL, _pool_worker, (void*)self);
+				rc = pthread_create(&tid, NULL, DNS_pool_worker, (void*)self);
 				if (rc == 0) {
 					self->threads_pool[j++] = tid;
 				}
@@ -325,7 +325,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		arg->extra = 0;
 		
 		pthread_mutex_lock(&self->mutex);
-		_free_timedout(self);
+		DNS_free_timedout(self);
 		bstree_put(self->fd_map, fd[0], res);
 		if (self->pool) {
 			if (self->busy_threads == self->pool && (self->extra_thread || queue_size(self->tout_queue) > self->extra_threads_cnt)) {
@@ -341,7 +341,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		
 		if (!self->pool || arg->extra) {
 			pthread_t tid;
-			int rc = pthread_create(&tid, &self->thread_attrs, _getaddrinfo, (void *)arg);
+			int rc = pthread_create(&tid, &self->thread_attrs, DNS_getaddrinfo, (void *)arg);
 			if (rc != 0) {
 				if (arg->host)    free(arg->host);
 				if (arg->service) free(arg->service);
@@ -430,7 +430,7 @@ void
 DESTROY(Net_DNS_Native *self)
 	CODE:
 		pthread_mutex_lock(&self->mutex);
-		_free_timedout(self);
+		DNS_free_timedout(self);
 		pthread_mutex_unlock(&self->mutex);
 		
 		if (self->pool) {
