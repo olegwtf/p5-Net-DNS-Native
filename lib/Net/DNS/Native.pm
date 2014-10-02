@@ -5,7 +5,7 @@ use XSLoader;
 use Socket ();
 use Config ();
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 use constant {
 	INET_ATON     => 0,
