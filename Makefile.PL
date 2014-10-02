@@ -2,6 +2,10 @@ use v5.6;
 use ExtUtils::MakeMaker;
 use Config;
 
+unless ($Config::Config{usethreads}||$Config::Config{libs}=~/-l?pthread\b/) {
+	die "***This perl may crash while using this module. See `WARNING' section in the documentation***\n";
+}
+
 my @additional;
 if ($^O eq 'MSWin32') {
 	push @additional, INC    => '-Ipthreads-win32/include';

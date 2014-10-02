@@ -6,10 +6,6 @@ use IO::Select;
 
 use constant HAS_INET_NTOP => eval { Socket::inet_ntop(AF_INET6, "\0"x16) };
 
-unless ($Net::DNS::Native::PERL_OK) {
-	plan skip_all => "This perl doesn't support threaded libraries";
-}
-
 my $ip = inet_aton("google.com");
 unless ($ip) {
 	plan skip_all => "no DNS access on this computer";

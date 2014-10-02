@@ -4,10 +4,6 @@ use Socket;
 use IO::Select;
 use Test::More;
 
-unless ($Net::DNS::Native::PERL_OK) {
-	plan skip_all => "This perl doesn't support threaded libraries";
-}
-
 my $ip = inet_aton("google.com");
 unless ($ip) {
 	plan skip_all => "no DNS access on this computer";
