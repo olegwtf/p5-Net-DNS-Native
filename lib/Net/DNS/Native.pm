@@ -141,8 +141,8 @@ Net::DNS::Native - non-blocking system DNS resolver
 
 This class provides several methods for host name resolution. It is designed to be used with event loops. All resolving are done
 by getaddrinfo(3) implemented in your system library. Since getaddrinfo() is blocking function and we don't want to block,
-call to this function will be done in separate thread. This class uses system native threads and not perl threads. So overhead
-shouldn't bee too big.
+calls to this function will be done in separate thread. This class uses system native threads and not perl threads. So overhead
+shouldn't be too big.
 
 =head1 WARNING
 
