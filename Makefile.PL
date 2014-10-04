@@ -2,7 +2,7 @@ use v5.6;
 use ExtUtils::MakeMaker;
 use Config;
 
-unless ($Config::Config{usethreads}||$Config::Config{libs}=~/-l?pthread\b/) {
+unless ($Config{usethreads} || $Config{libs} =~ /-l?pthread\b/) {
 	die "***This perl may crash while using this module. See `WARNING' section in the documentation***\n";
 }
 

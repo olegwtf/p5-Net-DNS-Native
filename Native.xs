@@ -343,8 +343,8 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 			pthread_t tid;
 			int rc = pthread_create(&tid, &self->thread_attrs, DNS_getaddrinfo, (void *)arg);
 			if (rc != 0) {
-				if (arg->host)    free(arg->host);
-				if (arg->service) free(arg->service);
+				if (arg->host)    Safefree(arg->host);
+				if (arg->service) Safefree(arg->service);
 				free(arg);
 				free(res);
 				if (hints) free(hints);

@@ -3,7 +3,6 @@ package Net::DNS::Native;
 use strict;
 use XSLoader;
 use Socket ();
-use Config ();
 
 our $VERSION = '0.09';
 
