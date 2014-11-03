@@ -1,5 +1,9 @@
 Revision history for Perl extension Net::DNS::Native
 
+0.10  Tue Nov  4 01:00:54 NOVT 2014
+    - More correct perl checks
+    - Few typo fixes
+
 0.09  Thu Oct  2 15:53:53 NOVT 2014
     - Fix segfaults on NetBSD and OpenBSD
     - Move perl checks to Makefile.PL
