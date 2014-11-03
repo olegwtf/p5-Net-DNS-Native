@@ -348,7 +348,9 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 				free(arg);
 				free(res);
 				if (hints) free(hints);
+				pthread_mutex_lock(&self->mutex);
 				bstree_del(self->fd_map, fd[0]);
+				pthread_mutex_unlock(&self->mutex);
 				close(fd[0]);
 				close(fd[1]);
 				croak("pthread_create(): %s", strerror(rc));
