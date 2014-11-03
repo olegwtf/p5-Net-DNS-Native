@@ -2,8 +2,10 @@ use v5.6;
 use ExtUtils::MakeMaker;
 use Config;
 
-unless ($Config{usethreads} || $Config{libs} =~ /-l?pthread\b/) {
-	die "***This perl may crash while using this module. See `WARNING' section in the documentation***\n";
+unless ($Config{usethreads} || $Config{osname} =~ /darwin|win32/i || $Config{libs} =~ /-l?pthread\b/ || $Config{ldflags} =~ /-l?pthread\b/) {
+	die "***This perl may crash while using this module. To avoid this compile your perl linked with pthreads***\n",
+	    "   Configure: ./Configure -A prepend:libswanted=\"pthread \"\n",
+	    "   perlbrew: perlbrew -A prepend:libswanted=\"pthread \" install perl-5.20.1\n"
 }
 
 my @additional;
