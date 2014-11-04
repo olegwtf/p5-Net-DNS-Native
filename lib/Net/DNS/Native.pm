@@ -1,7 +1,7 @@
 package Net::DNS::Native;
 
 use strict;
-use XSLoader;
+use DynaLoader;
 use Socket ();
 
 our $VERSION = '0.10';
@@ -13,7 +13,9 @@ use constant {
 	GETADDRINFO   => 3
 };
 
-XSLoader::load('Net::DNS::Native', $VERSION);
+our @ISA = 'DynaLoader';
+sub dl_load_flags { 0x01 }
+DynaLoader::bootstrap('Net::DNS::Native');
 
 sub _fd2socket($) {
 	open my $sock, '+<&=' . $_[0]
