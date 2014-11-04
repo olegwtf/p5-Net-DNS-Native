@@ -5,7 +5,7 @@ use DynaLoader;
 use Socket ();
 use Config;
 
-our $VERSION = '0.10';
+our $VERSION = '1.00';
 
 use constant {
 	INET_ATON     => 0,
