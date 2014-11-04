@@ -157,8 +157,10 @@ shouldn't be too big.
 
 =head1 INSTALLATION WARNING
 
-To support threaded extensions like this one your perl should be linked with threads library. At the installation time
-this module will check is your perl is good enough and will not install if not.
+For some platforms to support threaded extensions like this one your perl should be linked with threads library. At the
+installation time this module will check is your perl is good enough and will not install if not.
+
+If it will fail to install use instructions listed below.
 
 One of the possible solution to make your perl compatible with this module is to build perl with perl threads support
 using C<-Dusethreads> for C<Configure> script. Other solution is to use C<-A prepend:libswanted="pthread ">, which will
