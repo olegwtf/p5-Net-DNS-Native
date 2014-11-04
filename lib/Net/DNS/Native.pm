@@ -3,6 +3,7 @@ package Net::DNS::Native;
 use strict;
 use DynaLoader;
 use Socket ();
+use Config;
 
 our $VERSION = '0.10';
 
@@ -14,7 +15,15 @@ use constant {
 };
 
 our @ISA = 'DynaLoader';
-sub dl_load_flags { 0x01 }
+sub dl_load_flags { 
+	if ($Config{osname} =~ /linux/i && 
+	   !($Config{usethreads} || $Config{libs} =~ /-l?pthread\b/ || $Config{ldflags} =~ /-l?pthread\b/))
+	{
+		return 0x01;
+	}
+	
+	return 0;
+}
 DynaLoader::bootstrap('Net::DNS::Native');
 
 sub _fd2socket($) {
