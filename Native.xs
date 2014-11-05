@@ -113,38 +113,7 @@ void *DNS_pool_worker(void *v_arg) {
 	return NULL;
 }
 
-void DNS_before_fork_handler() {
-	if (DNS_instances == NULL || queue_size(DNS_instances) == 0) {
-		return;
-	}
-	
-	queue_iterator *it = queue_iterator_new(DNS_instances);
-	while (!queue_iterator_end(it)) {
-		pthread_mutex_lock(&((Net_DNS_Native*)queue_at(DNS_instances, it))->mutex);
-		queue_iterator_next(it);
-	}
-	queue_iterator_destroy(it);
-}
-
-void DNS_after_fork_handler_parent() {
-	if (DNS_instances == NULL || queue_size(DNS_instances) == 0) {
-		return;
-	}
-	
-	queue_iterator *it = queue_iterator_new(DNS_instances);
-	while (!queue_iterator_end(it)) {
-		pthread_mutex_unlock(&((Net_DNS_Native*)queue_at(DNS_instances, it))->mutex);
-		queue_iterator_next(it);
-	}
-	queue_iterator_destroy(it);
-}
-
-void DNS_after_fork_handler_child() {
-	DNS_after_fork_handler_parent();
-	
-}
-
-void DNS_free_timedout(Net_DNS_Native *self) {
+void DNS_free_timedout(Net_DNS_Native *self, char force) {
 	if (queue_size(self->tout_queue)) {
 		queue_iterator *it = queue_iterator_new(self->tout_queue);
 		DNS_timedout *tout;
@@ -157,16 +126,18 @@ void DNS_free_timedout(Net_DNS_Native *self) {
 				goto FREE_TOUT;
 			}
 			
-			if (res->arg) {
+			if (force || res->arg) {
 				bstree_del(self->fd_map, tout->fd0);
 				if (!res->error && res->hostinfo)
 					freeaddrinfo(res->hostinfo);
 				
 				close(res->fd1);
-				if (res->arg->hints)   free(res->arg->hints);
-				if (res->arg->host)    Safefree(res->arg->host);
-				if (res->arg->service) Safefree(res->arg->service);
-				free(res->arg);
+				if (res->arg) {
+					if (res->arg->hints)   free(res->arg->hints);
+					if (res->arg->host)    Safefree(res->arg->host);
+					if (res->arg->service) Safefree(res->arg->service);
+					free(res->arg);
+				}
 				free(res);
 				
 				FREE_TOUT:
@@ -181,6 +152,71 @@ void DNS_free_timedout(Net_DNS_Native *self) {
 		
 		queue_iterator_destroy(it);
 	}
+}
+
+void DNS_before_fork_handler() {
+	if (queue_size(DNS_instances) == 0) {
+		return;
+	}
+	
+	queue_iterator *it = queue_iterator_new(DNS_instances);
+	while (!queue_iterator_end(it)) {
+		pthread_mutex_lock(&((Net_DNS_Native*)queue_at(DNS_instances, it))->mutex);
+		queue_iterator_next(it);
+	}
+	queue_iterator_destroy(it);
+}
+
+void DNS_after_fork_handler_parent() {
+	if (queue_size(DNS_instances) == 0) {
+		return;
+	}
+	
+	queue_iterator *it = queue_iterator_new(DNS_instances);
+	while (!queue_iterator_end(it)) {
+		pthread_mutex_unlock(&((Net_DNS_Native*)queue_at(DNS_instances, it))->mutex);
+		queue_iterator_next(it);
+	}
+	queue_iterator_destroy(it);
+}
+
+void DNS_after_fork_handler_child() {
+	if (queue_size(DNS_instances) == 0) {
+		return;
+	}
+	
+	Net_DNS_Native *self;
+	queue_iterator *it = queue_iterator_new(DNS_instances);
+	
+	while (!queue_iterator_end(it)) {
+		self = queue_at(DNS_instances, it);
+		pthread_mutex_unlock(&self->mutex);
+		
+		// reinitialize stuff
+		DNS_free_timedout(self, 1);
+		
+		self->extra_threads_cnt = 0;
+		self->busy_threads = 0;
+		
+		if (self->pool) {
+			pthread_t tid;
+			int i, rc;
+			
+			for (i=0; i<self->pool; i++) {
+				rc = pthread_create(&tid, NULL, DNS_pool_worker, (void*)self);
+				if (rc == 0) {
+					self->threads_pool[i] = tid;
+				}
+				else {
+					croak("Can't recreate thread #%d after fork: %s", i+1, strerror(rc));
+				}
+			}
+		}
+		
+		queue_iterator_next(it);
+	}
+	
+	queue_iterator_destroy(it);
 }
 
 MODULE = Net::DNS::Native	PACKAGE = Net::DNS::Native
@@ -371,7 +407,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		arg->extra = 0;
 		
 		pthread_mutex_lock(&self->mutex);
-		DNS_free_timedout(self);
+		DNS_free_timedout(self, 0);
 		bstree_put(self->fd_map, fd[0], res);
 		if (self->pool) {
 			if (self->busy_threads == self->pool && (self->extra_thread || queue_size(self->tout_queue) > self->extra_threads_cnt)) {
@@ -478,7 +514,7 @@ void
 DESTROY(Net_DNS_Native *self)
 	CODE:
 		pthread_mutex_lock(&self->mutex);
-		DNS_free_timedout(self);
+		DNS_free_timedout(self, 0);
 		pthread_mutex_unlock(&self->mutex);
 		
 		if (self->pool) {

@@ -17,12 +17,14 @@ void bstree_put(bstree *tree, int key, void *val);
 void* bstree_get(bstree *tree, int key);
 void bstree_del(bstree *tree, int key);
 int bstree_size(bstree *tree);
+int* bstree_keys(bstree *tree);
 void bstree_destroy(bstree *tree);
 bstree_node* _bstree_new_node(int key, void *val);
 int _bstree_put(bstree_node **node_ptr, int key, void *val);
 void* _bstree_get(bstree_node *node, int key);
 int _bstree_del(bstree *tree, bstree_node *parent, bstree_node *node, int key);
 bstree_node* _bstree_most_left_node_parent(bstree_node *parent, bstree_node *node);
+void _bstree_keys(bstree_node *node, int *rv, int i);
 void _bstree_destroy(bstree_node *node);
 
 // PUBLIC API
@@ -49,6 +51,13 @@ void bstree_del(bstree *tree, int key) {
 
 int bstree_size(bstree *tree) {
 	return tree->size;
+}
+
+int* bstree_keys(bstree *tree) {
+	int *rv = malloc(bstree_size(tree) * sizeof(int));
+	_bstree_keys(tree->root, rv, 0);
+	
+	return rv;
 }
 
 void bstree_destroy(bstree *tree) {
@@ -167,6 +176,15 @@ bstree_node* _bstree_most_left_node_parent(bstree_node *parent, bstree_node *nod
 		return parent;
 	
 	return _bstree_most_left_node_parent(node, node->left);
+}
+
+void _bstree_keys(bstree_node *node, int *rv, int i) {
+	if (node == NULL)
+		return;
+	
+	rv[i++] = node->key;
+	_bstree_keys(node->left, rv, i);
+	_bstree_keys(node->right, rv, i);
 }
 
 void _bstree_destroy(bstree_node *node) {
