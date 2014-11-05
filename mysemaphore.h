@@ -6,12 +6,12 @@ typedef struct
 	pthread_cond_t count_nonzero;
 } my_sem_t;
 
-int my_sem_init(my_sem_t *s, unsigned int initial_count) {
+int my_sem_init(my_sem_t *s, int shared, unsigned int initial_count) {
 	int rc;
-	rc = pthread_mutex_init(&s->lock);
+	rc = pthread_mutex_init(&s->lock, NULL);
 	if (rc != 0) return rc;
 	
-	rc = pthread_cond_init(&s->count_nonzero);
+	rc = pthread_cond_init(&s->count_nonzero, NULL);
 	if (rc != 0) return rc;
 	
 	s->count = initial_count;

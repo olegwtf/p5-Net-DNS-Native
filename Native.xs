@@ -176,7 +176,7 @@ void DNS_before_fork_handler() {
 	while (!queue_iterator_end(it)) {
 		self = queue_at(DNS_instances, it);
 		pthread_mutex_lock(&self->mutex);
-		DNS_lock_semaphore(&self->semaphore);
+		if (self->pool) DNS_lock_semaphore(&self->semaphore);
 		queue_iterator_next(it);
 	}
 	queue_iterator_destroy(it);
@@ -190,8 +190,9 @@ void DNS_after_fork_handler_parent() {
 	Net_DNS_Native *self;
 	queue_iterator *it = queue_iterator_new(DNS_instances);
 	while (!queue_iterator_end(it)) {
-		pthread_mutex_unlock(&((Net_DNS_Native*)queue_at(DNS_instances, it))->mutex);
-		DNS_unlock_semaphore(&self->semaphore);
+		self = queue_at(DNS_instances, it);
+		pthread_mutex_unlock(&self->mutex);
+		if (self->pool) DNS_unlock_semaphore(&self->semaphore);
 		queue_iterator_next(it);
 	}
 	queue_iterator_destroy(it);
@@ -208,7 +209,7 @@ void DNS_after_fork_handler_child() {
 	while (!queue_iterator_end(it)) {
 		self = queue_at(DNS_instances, it);
 		pthread_mutex_unlock(&self->mutex);
-		DNS_unlock_semaphore(&self->semaphore);
+		if (self->pool) DNS_unlock_semaphore(&self->semaphore);
 		
 		// reinitialize stuff
 		DNS_free_timedout(self, 1);
