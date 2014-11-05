@@ -22,12 +22,12 @@
 
 // unnamed semaphores are not implemented in this POSIX compatible UNIX system
 #ifdef PERL_DARWIN
-# include <dispatch/dispatch.h>
-# define sem_t dispatch_semaphore_t
-# define sem_init(sem, pshared, value) ((*sem = dispatch_semaphore_create(value)) == NULL ? -1 : 0)
-# define sem_wait(sem) dispatch_semaphore_wait(*sem, DISPATCH_TIME_FOREVER)
-# define sem_post(sem) dispatch_semaphore_signal(*sem)
-# define sem_destroy(sem) dispatch_release(*sem)
+# include "mysemaphore.h"
+# define sem_t my_sem_t
+# define sem_init my_sem_init
+# define sem_wait my_sem_wait
+# define sem_post my_sem_post
+# define sem_destroy my_sem_destroy
 #endif
 
 typedef struct {
@@ -154,14 +154,29 @@ void DNS_free_timedout(Net_DNS_Native *self, char force) {
 	}
 }
 
+void DNS_lock_semaphore(sem_t *s) {
+#ifdef PERL_DARWIN
+	pthread_mutex_lock(&s->lock);
+#endif
+}
+
+void DNS_unlock_semaphore(sem_t *s) {
+#ifdef PERL_DARWIN
+	pthread_mutex_unlock(&s->lock);
+#endif
+}
+
 void DNS_before_fork_handler() {
 	if (queue_size(DNS_instances) == 0) {
 		return;
 	}
 	
+	Net_DNS_Native *self;
 	queue_iterator *it = queue_iterator_new(DNS_instances);
 	while (!queue_iterator_end(it)) {
-		pthread_mutex_lock(&((Net_DNS_Native*)queue_at(DNS_instances, it))->mutex);
+		self = queue_at(DNS_instances, it);
+		pthread_mutex_lock(&self->mutex);
+		DNS_lock_semaphore(&self->semaphore);
 		queue_iterator_next(it);
 	}
 	queue_iterator_destroy(it);
@@ -172,9 +187,11 @@ void DNS_after_fork_handler_parent() {
 		return;
 	}
 	
+	Net_DNS_Native *self;
 	queue_iterator *it = queue_iterator_new(DNS_instances);
 	while (!queue_iterator_end(it)) {
 		pthread_mutex_unlock(&((Net_DNS_Native*)queue_at(DNS_instances, it))->mutex);
+		DNS_unlock_semaphore(&self->semaphore);
 		queue_iterator_next(it);
 	}
 	queue_iterator_destroy(it);
@@ -191,6 +208,7 @@ void DNS_after_fork_handler_child() {
 	while (!queue_iterator_end(it)) {
 		self = queue_at(DNS_instances, it);
 		pthread_mutex_unlock(&self->mutex);
+		DNS_unlock_semaphore(&self->semaphore);
 		
 		// reinitialize stuff
 		DNS_free_timedout(self, 1);
