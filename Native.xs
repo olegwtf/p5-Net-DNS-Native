@@ -67,6 +67,8 @@ typedef struct {
 	SV* sock0;
 } DNS_timedout;
 
+queue *DNS_instances = NULL;
+
 void *DNS_getaddrinfo(void *v_arg) {
 	DNS_thread_arg *arg = (DNS_thread_arg *)v_arg;
 	
@@ -109,6 +111,37 @@ void *DNS_pool_worker(void *v_arg) {
 	}
 	
 	return NULL;
+}
+
+void DNS_before_fork_handler() {
+	if (DNS_instances == NULL || queue_size(DNS_instances) == 0) {
+		return;
+	}
+	
+	queue_iterator *it = queue_iterator_new(DNS_instances);
+	while (!queue_iterator_end(it)) {
+		pthread_mutex_lock(&((Net_DNS_Native*)queue_at(DNS_instances, it))->mutex);
+		queue_iterator_next(it);
+	}
+	queue_iterator_destroy(it);
+}
+
+void DNS_after_fork_handler_parent() {
+	if (DNS_instances == NULL || queue_size(DNS_instances) == 0) {
+		return;
+	}
+	
+	queue_iterator *it = queue_iterator_new(DNS_instances);
+	while (!queue_iterator_end(it)) {
+		pthread_mutex_unlock(&((Net_DNS_Native*)queue_at(DNS_instances, it))->mutex);
+		queue_iterator_next(it);
+	}
+	queue_iterator_destroy(it);
+}
+
+void DNS_after_fork_handler_child() {
+	DNS_after_fork_handler_parent();
+	
 }
 
 void DNS_free_timedout(Net_DNS_Native *self) {
@@ -213,6 +246,17 @@ new(char* class, ...)
 		self->in_queue = NULL;
 		self->threads_pool = NULL;
 		
+		if (DNS_instances == NULL) {
+			DNS_instances = queue_new();
+#ifndef WIN32
+			rc = pthread_atfork(DNS_before_fork_handler, DNS_after_fork_handler_parent, DNS_after_fork_handler_child);
+			if (rc != 0) {
+				warn("Can't install fork handler: %s", strerror(rc));
+				goto FAIL;
+			}
+#endif
+		}
+		
 		if (self->pool) {
 			if (sem_init(&self->semaphore, 0, 0) != 0) {
 				warn("sem_init(): %s", strerror(errno));
@@ -256,6 +300,8 @@ new(char* class, ...)
 				Safefree(self);
 				RETVAL = &PL_sv_undef;
 		}
+		
+		queue_push(DNS_instances, self);
 	OUTPUT:
 		RETVAL
 
@@ -462,6 +508,16 @@ DESTROY(Net_DNS_Native *self)
 		if (bstree_size(self->fd_map) > 0) {
 			warn("destroying object with %d non-received results", bstree_size(self->fd_map));
 		}
+		
+		queue_iterator *it = queue_iterator_new(DNS_instances);
+		while (!queue_iterator_end(it)) {
+			if (queue_at(DNS_instances, it) == self) {
+				queue_del(DNS_instances, it);
+				break;
+			}
+			queue_iterator_next(it);
+		}
+		queue_iterator_destroy(it);
 		
 		pthread_attr_destroy(&self->thread_attrs);
 		pthread_mutex_destroy(&self->mutex);
