@@ -4,20 +4,19 @@ use Test::More;
 
 my $dns = Net::DNS::Native->new;
 
+my @fh;
+my $buf;
 eval {
 	for (1..3) {
-		my @fh;
-		
 		for (1..70) {
 			push @fh, $dns->getaddrinfo('localhost');
 		}
-		
-		my $buf;
 		sysread($_, $buf, 1) && $dns->get_result($_) for @fh;
 	}
 };
 if (my $err = $@) {
 	if ($err =~ /socketpair|pthread/) {
+		sysread($_, $buf, 1) && $dns->get_result($_) for @fh;
 		plan skip_all => $err;
 	}
 	else {
