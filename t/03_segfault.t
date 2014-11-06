@@ -8,7 +8,7 @@ eval {
 	for (1..3) {
 		my @fh;
 		
-		for (1..100) {
+		for (1..70) {
 			push @fh, $dns->getaddrinfo('localhost');
 		}
 		
