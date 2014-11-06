@@ -246,4 +246,34 @@ while ($sel->count() > 0) {
 	}
 }
 
+# FORK CHECK
+SKIP: {
+	skip 'No fork() support on this platform', 0 if $^O eq 'MSWin32';
+	defined(my $child = fork()) or skip "Can't fork: $!", 0;
+	
+	if ($child == 0) {
+		for my $host (qw/localhost google.com localhost google.cy localhost google.ru localhost/) {
+			my $sock = $dns->getaddrinfo($host);
+			$sel->add($sock);
+		}
+		
+		while ($sel->count() > 0) {
+			my @ready = $sel->can_read(60) or exit 1;
+			
+			for my $sock (@ready) {
+				sysread($sock, my $buf, 1);
+				if ($buf eq '2') {
+					my @res = $dns->get_result($sock) or exit 2;
+					$sel->remove($sock);
+				}
+			}
+		}
+		
+		exit 0;
+	}
+	
+	wait();
+	is($?>>8, 0, 'Child process worked successfully');
+}
+
 done_testing;
