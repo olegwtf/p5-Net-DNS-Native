@@ -43,6 +43,8 @@ typedef struct {
 	int extra_threads_cnt;
 	int busy_threads;
 	queue* tout_queue;
+	char forked;
+	char need_pool_reinit;
 } Net_DNS_Native;
 
 typedef struct {
@@ -198,6 +200,21 @@ void DNS_after_fork_handler_parent() {
 	queue_iterator_destroy(it);
 }
 
+void DNS_reinit_pool(Net_DNS_Native *self) {
+	pthread_t tid;
+	int i, rc;
+	
+	for (i=0; i<self->pool; i++) {
+		rc = pthread_create(&tid, NULL, DNS_pool_worker, (void*)self);
+		if (rc == 0) {
+			self->threads_pool[i] = tid;
+		}
+		else {
+			croak("Can't recreate thread #%d after fork: %s", i+1, strerror(rc));
+		}
+	}
+}
+
 void DNS_after_fork_handler_child() {
 	if (queue_size(DNS_instances) == 0) {
 		return;
@@ -216,20 +233,15 @@ void DNS_after_fork_handler_child() {
 		
 		self->extra_threads_cnt = 0;
 		self->busy_threads = 0;
+		self->forked = 1;
 		
 		if (self->pool) {
-			pthread_t tid;
-			int i, rc;
-			
-			for (i=0; i<self->pool; i++) {
-				rc = pthread_create(&tid, NULL, DNS_pool_worker, (void*)self);
-				if (rc == 0) {
-					self->threads_pool[i] = tid;
-				}
-				else {
-					croak("Can't recreate thread #%d after fork: %s", i+1, strerror(rc));
-				}
-			}
+		#ifdef __NetBSD__
+			// unfortunetly under NetBSD threads created here will misbehave
+			self->need_pool_reinit = 1;
+		#else
+			DNS_reinit_pool(self);
+		#endif
 		}
 		
 		queue_iterator_next(it);
@@ -258,6 +270,8 @@ new(char* class, ...)
 		self->extra_thread = 0;
 		self->extra_threads_cnt = 0;
 		self->busy_threads = 0;
+		self->forked = 0;
+		self->need_pool_reinit = 0;
 		char *opt;
 		
 		for (i=1; i<items; i+=2) {
@@ -303,13 +317,13 @@ new(char* class, ...)
 		
 		if (DNS_instances == NULL) {
 			DNS_instances = queue_new();
-#ifndef WIN32
+		#ifndef WIN32
 			rc = pthread_atfork(DNS_before_fork_handler, DNS_after_fork_handler_parent, DNS_after_fork_handler_child);
 			if (rc != 0) {
 				warn("Can't install fork handler: %s", strerror(rc));
 				goto FAIL;
 			}
-#endif
+		#endif
 		}
 		
 		if (self->pool) {
@@ -365,6 +379,12 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 	INIT:
 		int fd[2];
 	CODE:
+	#ifdef __NetBSD__
+		if (self->need_pool_reinit) {
+			self->need_pool_reinit = 0;
+			DNS_reinit_pool(self);
+		}
+	#endif
 		if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fd) != 0)
 			croak("socketpair(): %s", strerror(errno));
 		
@@ -552,6 +572,10 @@ DESTROY(Net_DNS_Native *self)
 			void *rv;
 			
 			for (i=0; i<self->pool; i++) {
+			#ifdef __NetBSD__
+				// unfortunetly NetBSD can join only first thread after fork
+				if (self->forked && i > 0) break;
+			#endif
 				pthread_join(self->threads_pool[i], &rv);
 			}
 			
