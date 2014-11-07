@@ -1,7 +1,8 @@
 Revision history for Perl extension Net::DNS::Native
 
-1.00  Tue Nov  4 23:37:34 NOVT 2014
+0.11  Fri Nov  7 17:41:09 NOVT 2014
     - Found a way to get it work on any perl under Linux
+    - Try to behave well when process with Net::DNS::Native instances calls fork()
 
 0.10  Tue Nov  4 01:00:54 NOVT 2014
     - More correct perl checks
