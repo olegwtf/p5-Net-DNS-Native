@@ -238,12 +238,12 @@ void DNS_after_fork_handler_child() {
 		self->forked = 1;
 		
 		if (self->pool) {
-		#ifdef __NetBSD__
+#ifdef __NetBSD__
 			// unfortunetly under NetBSD threads created here will misbehave
 			self->need_pool_reinit = 1;
-		#else
+#else
 			DNS_reinit_pool(self);
-		#endif
+#endif
 		}
 		
 		queue_iterator_next(it);
@@ -320,13 +320,13 @@ new(char* class, ...)
 		
 		if (DNS_instances == NULL) {
 			DNS_instances = queue_new();
-		#ifndef WIN32
+#ifndef WIN32
 			rc = pthread_atfork(DNS_before_fork_handler, DNS_after_fork_handler_parent, DNS_after_fork_handler_child);
 			if (rc != 0) {
 				warn("Can't install fork handler: %s", strerror(rc));
 				goto FAIL;
 			}
-		#endif
+#endif
 		}
 		
 		if (self->pool) {
@@ -382,12 +382,12 @@ _getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int
 	INIT:
 		int fd[2];
 	CODE:
-	#ifdef __NetBSD__
+#ifdef __NetBSD__
 		if (self->need_pool_reinit) {
 			self->need_pool_reinit = 0;
 			DNS_reinit_pool(self);
 		}
-	#endif
+#endif
 		if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fd) != 0)
 			croak("socketpair(): %s", strerror(errno));
 		
@@ -581,10 +581,10 @@ DESTROY(Net_DNS_Native *self)
 			void *rv;
 			
 			for (i=0; i<self->pool; i++) {
-			#ifdef __NetBSD__
+#ifdef __NetBSD__
 				// unfortunetly NetBSD can join only first thread after fork
 				if (self->forked && i > 0) break;
-			#endif
+#endif
 				pthread_join(self->threads_pool[i], &rv);
 			}
 			
