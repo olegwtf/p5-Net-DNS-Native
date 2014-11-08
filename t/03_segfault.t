@@ -8,6 +8,7 @@ my @fh;
 my $buf;
 eval {
 	for (1..3) {
+		@fh = ();
 		for (1..70) {
 			push @fh, $dns->getaddrinfo('localhost');
 		}
