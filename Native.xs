@@ -375,7 +375,7 @@ new(char* class, ...)
 		RETVAL
 
 int
-_getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int type)
+_getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int type)
 	INIT:
 		int fd[2];
 	CODE:
@@ -388,6 +388,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, char *service, SV* sv_hints, int 
 		if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fd) != 0)
 			croak("socketpair(): %s", strerror(errno));
 		
+		char *service = SvOK(sv_service) ? SvPV_nolen(sv_service) : "";
 		struct addrinfo *hints = NULL;
 		
 		if (SvOK(sv_hints)) {

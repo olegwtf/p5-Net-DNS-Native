@@ -1,6 +1,7 @@
 package Net::DNS::Native;
 
 use strict;
+use warnings;
 use DynaLoader;
 use Socket ();
 use Config;
