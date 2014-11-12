@@ -45,7 +45,7 @@ typedef struct {
 	queue* tout_queue;
 	char forked;
 	char need_pool_reinit;
-	UV perl_id;
+	PerlInterpreter *perl;
 } Net_DNS_Native;
 
 typedef struct {
@@ -234,7 +234,7 @@ void DNS_after_fork_handler_child() {
 		
 		self->extra_threads_cnt = 0;
 		self->busy_threads = 0;
-		self->perl_id = (UV)PERL_GET_THX;
+		self->perl = PERL_GET_THX;
 		self->forked = 1;
 		
 		if (self->pool) {
@@ -274,7 +274,7 @@ new(char* class, ...)
 		self->busy_threads = 0;
 		self->forked = 0;
 		self->need_pool_reinit = 0;
-		self->perl_id = (UV)PERL_GET_THX;
+		self->perl = PERL_GET_THX;
 		char *opt;
 		
 		for (i=1; i<items; i+=2) {
@@ -556,7 +556,7 @@ _timedout(Net_DNS_Native *self, SV *sock, int fd)
 void
 DESTROY(Net_DNS_Native *self)
 	CODE:
-		if ((UV)PERL_GET_THX != self->perl_id) {
+		if (PERL_GET_THX != self->perl) {
 			// attempt to destroy from another perl thread
 			return;
 		}
