@@ -18,6 +18,7 @@
 #if defined(WIN32) && !defined(UNDER_CE)
 # include <io.h>
 # define write _write
+# define read _read
 #endif
 
 // unnamed semaphores are not implemented in this POSIX compatible UNIX system
@@ -594,7 +595,17 @@ DESTROY(Net_DNS_Native *self)
 		}
 		
 		if (bstree_size(self->fd_map) > 0) {
-			warn("destroying object with %d non-received results", bstree_size(self->fd_map));
+			warn("destroying object with %d non-received or timed out results", bstree_size(self->fd_map));
+			int *fds = bstree_keys(self->fd_map);
+			int i, l;
+			char buf[1];
+			
+			for (i=0, l=bstree_size(self->fd_map); i<l; i++) {
+				read(fds[i], buf, 1);
+				close(fds[i]);
+			}
+			
+			free(fds);
 		}
 		
 		queue_iterator *it = queue_iterator_new(DNS_instances);
