@@ -1,5 +1,11 @@
 Revision history for Perl extension Net::DNS::Native
 
+0.13  Fri Nov 14 14:14:48 NOVT 2014
+    - Compare PerlInterpreter pointers without casting: this will eliminate
+      compilation problems for strict compilers
+    - Wait detached threads before destroying: this will eliminate segfault
+      possibility when destroying object with active detached threads
+
 0.12  Sat Nov  8 18:13:49 KRAT 2014
     - Fix test warnings on old perls
     - Try to behave well with perl threads
