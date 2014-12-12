@@ -1,3 +1,6 @@
+#ifdef __linux__
+# define _GNU_SOURCE
+#endif
 #include <pthread.h>
 #include <semaphore.h>
 #include "EXTERN.h"
@@ -29,6 +32,27 @@
 # define sem_wait my_sem_wait
 # define sem_post my_sem_post
 # define sem_destroy my_sem_destroy
+#endif
+
+#ifdef __linux__
+# include <link.h>
+int _dl_phdr_cb(struct dl_phdr_info *info, size_t size, void *data) {
+	int i;
+	char *found = (char*)data;
+	
+	if (*found) {
+		return *found;
+	}
+	
+	for (i=0; i < info->dlpi_phnum; i++) {
+		if (instr(info->dlpi_name, "libnss_files") != NULL) {
+			*found = 1;
+			break;
+		}
+	}
+	
+	return *found;
+}
 #endif
 
 typedef struct {
@@ -651,3 +675,15 @@ unpack_sockaddr_in6(SV *sv_addr)
 		struct sockaddr_in6 *struct_addr = (struct sockaddr_in6*) addr;
 		XPUSHs(sv_2mortal(newSViv(struct_addr->sin6_port)));
 		XPUSHs(sv_2mortal(newSVpvn((char*)struct_addr->sin6_addr.s6_addr, 16)));
+
+int
+_is_non_safe_symbols_loaded()
+	INIT:
+		char found = 0;
+	CODE:
+#ifdef __linux__
+		dl_iterate_phdr(_dl_phdr_cb, (void*)&found);
+#endif
+		RETVAL = found;
+	OUTPUT:
+		RETVAL
