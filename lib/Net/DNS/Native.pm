@@ -34,7 +34,7 @@ if (_needs_rtld_global && &_is_non_safe_symbols_loaded) {
 Some package defined non thread safe symbols which %s uses internally
 Please make sure you are not placed loading of modules like IO::Socket::IP
 before this one
-And do not call functions like getaddrinfo(), gethostbyname(), inet_aton()
+And not called functions like getaddrinfo(), gethostbyname(), inet_aton()
 before loading of %s
 ************************************************************************", __PACKAGE__, __PACKAGE__);
 }
