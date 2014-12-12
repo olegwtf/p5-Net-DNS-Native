@@ -12,30 +12,27 @@ use constant {
 	INET_ATON     => 0,
 	INET_PTON     => 1,
 	GETHOSTBYNAME => 2,
-	GETADDRINFO   => 3
+	GETADDRINFO   => 3,
+	NEED_RTLD_GLOBAL => $Config{osname} =~ /linux/i && 
+	   !($Config{usethreads} || $Config{libs} =~ /-l?pthread\b/ || $Config{ldflags} =~ /-l?pthread\b/)
 };
 
 our @ISA = 'DynaLoader';
-sub _needs_rtld_global() {
-	$Config{osname} =~ /linux/i && 
-	   !($Config{usethreads} || $Config{libs} =~ /-l?pthread\b/ || $Config{ldflags} =~ /-l?pthread\b/)
-}
 sub dl_load_flags {
-	if (_needs_rtld_global) {
+	if (NEED_RTLD_GLOBAL) {
 		return 0x01;
 	}
 	
 	return 0;
 }
 DynaLoader::bootstrap('Net::DNS::Native');
-if (_needs_rtld_global && &_is_non_safe_symbols_loaded) {
+if (NEED_RTLD_GLOBAL && &_is_non_safe_symbols_loaded) {
 	die sprintf(
 "***********************************************************************
 Some package defined non thread safe symbols which %s uses internally
 Please make sure you are not placed loading of modules like IO::Socket::IP
-before this one
-And not called functions like getaddrinfo(), gethostbyname(), inet_aton()
-before loading of %s
+before this one and not called functions like getaddrinfo(), gethostbyname(),
+inet_aton() before loading of %s
 ************************************************************************", __PACKAGE__, __PACKAGE__);
 }
 
