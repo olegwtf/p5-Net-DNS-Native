@@ -1,5 +1,9 @@
 Revision history for Perl extension Net::DNS::Native
 
+0.14  Fri Dec 12 22:44:09 NOVT 2014
+    - Detect situations when somebody loaded non thread safe symbols
+      which we can't override
+
 0.13  Fri Nov 14 14:14:48 NOVT 2014
     - Compare PerlInterpreter pointers without casting: this will eliminate
       compilation problems for strict compilers
