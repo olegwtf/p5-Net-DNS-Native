@@ -59,7 +59,9 @@ typedef struct {
 	pthread_mutex_t mutex;
 	pthread_attr_t thread_attrs;
 	pthread_t *threads_pool;
-	sigset_t ignored_sigs;
+#ifndef WIN32
+	sigset_t blocked_sig;
+#endif
 	sem_t semaphore;
 	bstree* fd_map;
 	queue* in_queue;
@@ -120,6 +122,9 @@ void *DNS_getaddrinfo(void *v_arg) {
 
 void *DNS_pool_worker(void *v_arg) {
 	Net_DNS_Native *self = (Net_DNS_Native*)v_arg;
+#ifndef WIN32
+	pthread_sigmask(SIG_BLOCK, &self->blocked_sig, NULL);
+#endif
 	
 	while (sem_wait(&self->semaphore) == 0) {
 		pthread_mutex_lock(&self->mutex);
@@ -301,7 +306,9 @@ new(char* class, ...)
 		self->forked = 0;
 		self->need_pool_reinit = 0;
 		self->perl = PERL_GET_THX;
-		sigfillset(&self->ignored_sigs);
+#ifndef WIN32
+		sigfillset(&self->blocked_sig);
+#endif
 		char *opt;
 		
 		for (i=1; i<items; i+=2) {
