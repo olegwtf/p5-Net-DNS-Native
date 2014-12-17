@@ -59,6 +59,7 @@ typedef struct {
 	pthread_mutex_t mutex;
 	pthread_attr_t thread_attrs;
 	pthread_t *threads_pool;
+	sigset_t ignored_sigs;
 	sem_t semaphore;
 	bstree* fd_map;
 	queue* in_queue;
@@ -300,6 +301,7 @@ new(char* class, ...)
 		self->forked = 0;
 		self->need_pool_reinit = 0;
 		self->perl = PERL_GET_THX;
+		sigfillset(&self->ignored_sigs);
 		char *opt;
 		
 		for (i=1; i<items; i+=2) {
