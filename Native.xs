@@ -83,6 +83,7 @@ typedef struct {
 	struct addrinfo *hints;
 	int fd0;
 	char extra;
+	char pool;
 } DNS_thread_arg;
 
 typedef struct {
@@ -102,6 +103,10 @@ queue *DNS_instances = NULL;
 
 void *DNS_getaddrinfo(void *v_arg) {
 	DNS_thread_arg *arg = (DNS_thread_arg *)v_arg;
+#ifndef WIN32
+	if (!arg->pool)
+		pthread_sigmask(SIG_BLOCK, &arg->self->blocked_sig, NULL);
+#endif
 	
 	pthread_mutex_lock(&arg->self->mutex);
 	DNS_result *res = bstree_get(arg->self->fd_map, arg->fd0);
@@ -482,6 +487,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int
 		arg->hints = hints;
 		arg->fd0 = fd[0];
 		arg->extra = 0;
+		arg->pool  = 0;
 		
 		pthread_mutex_lock(&self->mutex);
 		DNS_free_timedout(self, 0);
@@ -492,6 +498,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int
 				self->extra_threads_cnt++;
 			}
 			else {
+				arg->pool = 1;
 				queue_push(self->in_queue, arg);
 				sem_post(&self->semaphore);
 			}
