@@ -176,6 +176,14 @@ One of the possible solution to make your perl compatible with this module is to
 using C<-Dusethreads> for C<Configure> script. Other solution is to use C<-A prepend:libswanted="pthread ">, which will
 just link non-threaded perl with pthreads.
 
+On Linux with perl not linked with pthreads this module may die with appropriate message at require time. This may happen
+if you are called some functions from system library related to DNS operations before loading of C<Net::DNS::Native> (or some module,
+like C<IO::Socket::IP>, that you are already loaded, called it internally). So, on such perl C<use IO::Socket::IP; use Net::DNS::Native> may fail, but
+C<use Net::DNS::Native; use IO::Socket::IP> will success. The reason of such check inside C<Net::DNS::Native> is that calls to this
+functions (gethostbyname, getprotobyname, inet_aton, getaddrinfo, ...) will cause loading of non-thread safe versions of DNS related
+stuff and C<Net::DNS::Native> loaded after that will not be able to override this with thread safe versions. So, at one moment your
+program will simply exit with segfault. This is why this check and rule are very important.
+
 =head1 METHODS
 
 =head2 new
