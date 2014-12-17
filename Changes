@@ -1,5 +1,9 @@
 Revision history for Perl extension Net::DNS::Native
 
+0.15  Wed Dec 17 19:59:21 NOVT 2014
+    - Block all signals for newly created threads to prevent signal
+      mess
+
 0.14  Fri Dec 12 22:44:09 NOVT 2014
     - Detect situations when somebody loaded non thread safe symbols
       which we can't override
