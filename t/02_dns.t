@@ -279,7 +279,7 @@ SKIP: {
 	is($?>>8, 0, 'Child process worked successfully (with pool)');
 	
 	$dns = Net::DNS::Native->new();
-	defined(my $child = fork()) or skip "Can't fork: $!", 0;
+	defined($child = fork()) or skip "Can't fork: $!", 0;
 	
 	# without pool
 	if ($child == 0) {

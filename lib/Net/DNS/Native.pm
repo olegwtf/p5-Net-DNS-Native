@@ -4,6 +4,8 @@ use strict;
 use warnings;
 use DynaLoader;
 use Socket ();
+use Symbol ();
+use POSIX ();
 use Config;
 
 our $VERSION = '0.15';
@@ -36,30 +38,30 @@ inet_aton() before loading of %s
 ************************************************************************", __PACKAGE__, __PACKAGE__);
 }
 
-sub _fd2socket($) {
-	open my $sock, '+<&=' . $_[0]
-		or die "Can't transform file descriptor to handle: ", $!;
+sub _fd2socket($$) {
+	my $sock = Symbol::gensym();
+    tie *$sock, 'Net::DNS::Native::Handle', $_[1], $_[0];
 	$sock;
 }
 
 sub getaddrinfo {
 	my $self = shift;
-	_fd2socket $self->_getaddrinfo($_[0], $_[1], $_[2], GETADDRINFO);
+	_fd2socket $self, $self->_getaddrinfo($_[0], $_[1], $_[2], GETADDRINFO);
 }
 
 sub inet_aton {
 	my $self = shift;
-	_fd2socket $self->_getaddrinfo($_[0], undef, {family => Socket::AF_INET, socktype => Socket::SOCK_STREAM}, INET_ATON);
+	_fd2socket $self, $self->_getaddrinfo($_[0], undef, {family => Socket::AF_INET, socktype => Socket::SOCK_STREAM}, INET_ATON);
 }
 
 sub inet_pton {
 	my $self = shift;
-	_fd2socket $self->_getaddrinfo($_[1], undef, {family => $_[0], socktype => Socket::SOCK_STREAM}, INET_PTON);
+	_fd2socket $self, $self->_getaddrinfo($_[1], undef, {family => $_[0], socktype => Socket::SOCK_STREAM}, INET_PTON);
 }
 
 sub gethostbyname {
 	my $self = shift;
-	_fd2socket $self->_getaddrinfo($_[0], undef, {family => Socket::AF_INET, flags => Socket::AI_CANONNAME, socktype => Socket::SOCK_STREAM}, GETHOSTBYNAME);
+	_fd2socket $self, $self->_getaddrinfo($_[0], undef, {family => Socket::AF_INET, flags => Socket::AI_CANONNAME, socktype => Socket::SOCK_STREAM}, GETHOSTBYNAME);
 }
 
 sub get_result {
@@ -67,6 +69,8 @@ sub get_result {
 	
 	my ($type, $err, @res) =  $self->_get_result(fileno($sock));
 	
+    tied(*$sock)->need_result(0);
+    
 	if ($type == GETADDRINFO) {
 		return ($err, @res);
 	}
@@ -88,7 +92,53 @@ sub get_result {
 
 sub timedout {
 	my ($self, $sock) = @_;
-	$self->_timedout($sock, fileno($sock));
+    
+    if (ref $sock) {
+        tied(*$sock)->need_result(0);
+        $sock = fileno $sock;
+    }
+    
+	$self->_timedout($sock);
+}
+
+package Net::DNS::Native::Handle;
+
+use strict;
+use warnings;
+
+sub TIEHANDLE {
+    my ($class, $fd, $resolver) = @_;
+    bless { fd => $fd, rs => $resolver, need_result => 1 }, $class;
+}
+
+sub FILENO {
+    return $_[0]->{fd};
+}
+
+sub READ {
+    my $self = shift;
+    POSIX::read( $self->{fd}, $_[0], $_[1] );
+}
+
+sub CLOSE {}
+
+sub DESTROY {
+    my $self = shift;
+    
+    if ($self->need_result) {
+        $self->{rs}->timedout($self->{fd});
+        $self->need_result(0);
+    }
+}
+
+sub need_result {
+    my $self = shift;
+    
+    unless (@_) {
+        return $self->{need_result};
+    }
+    
+    $self->{need_result} = $_[0];
 }
 
 1;

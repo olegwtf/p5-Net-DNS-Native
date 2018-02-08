@@ -3,17 +3,18 @@
 #endif
 #include <pthread.h>
 #include <semaphore.h>
+#include <stdint.h>
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSUB.h"
 #include "ppport.h"
-#include "bstree.h"
 
 #pragma push_macro("free")
 #pragma push_macro("malloc")
 #undef free
 #undef malloc
 #include "queue.h" // will be used outside of the main thread
+#include "bstree.h"
 #pragma pop_macro("free")
 #pragma pop_macro("malloc")
 
@@ -94,11 +95,6 @@ typedef struct {
 	DNS_thread_arg *arg;
 } DNS_result;
 
-typedef struct {
-	int fd0;
-	SV* sock0;
-} DNS_timedout;
-
 queue *DNS_instances = NULL;
 
 void *DNS_getaddrinfo(void *v_arg) {
@@ -155,22 +151,23 @@ void *DNS_pool_worker(void *v_arg) {
 void DNS_free_timedout(Net_DNS_Native *self, char force) {
 	if (queue_size(self->tout_queue)) {
 		queue_iterator *it = queue_iterator_new(self->tout_queue);
-		DNS_timedout *tout;
+		int fd;
 		DNS_result *res;
 		
 		while (!queue_iterator_end(it)) {
-			tout = queue_at(self->tout_queue, it);
-			res = bstree_get(self->fd_map, tout->fd0);
+			fd = (intptr_t)queue_at(self->tout_queue, it);
+			res = bstree_get(self->fd_map, fd);
 			if (res == NULL) {
 				goto FREE_TOUT;
 			}
 			
 			if (force || res->arg) {
-				bstree_del(self->fd_map, tout->fd0);
+				bstree_del(self->fd_map, fd);
 				if (!res->error && res->hostinfo)
 					freeaddrinfo(res->hostinfo);
 				
-				close(res->fd1);
+				close(fd);
+                close(res->fd1);
 				if (res->arg) {
 					if (res->arg->hints)   free(res->arg->hints);
 					if (res->arg->host)    Safefree(res->arg->host);
@@ -180,9 +177,7 @@ void DNS_free_timedout(Net_DNS_Native *self, char force) {
 				free(res);
 				
 				FREE_TOUT:
-					SvREFCNT_dec(tout->sock0);
 					queue_del(self->tout_queue, it);
-					free(tout);
 					continue;
 			}
 			
@@ -565,7 +560,7 @@ _get_result(Net_DNS_Native *self, int fd)
 			if (res->hostinfo) freeaddrinfo(res->hostinfo);
 		}
 		
-		//close(fd); // will be closed by perl
+		close(fd);
 		close(res->fd1);
 		if (res->arg->hints)   free(res->arg->hints);
 		if (res->arg->host)    Safefree(res->arg->host);
@@ -574,7 +569,7 @@ _get_result(Net_DNS_Native *self, int fd)
 		free(res);
 
 void
-_timedout(Net_DNS_Native *self, SV *sock, int fd)
+_timedout(Net_DNS_Native *self, int fd)
 	PPCODE:
 		char unknown = 0;
 		
@@ -583,11 +578,7 @@ _timedout(Net_DNS_Native *self, SV *sock, int fd)
 			unknown = 1;
 		}
 		else {
-			sock = SvREFCNT_inc(sock);
-			DNS_timedout *tout = malloc(sizeof(DNS_timedout));
-			tout->fd0 = fd;
-			tout->sock0 = sock;
-			queue_push(self->tout_queue, tout);
+			queue_push(self->tout_queue, (void*)(intptr_t)fd);
 		}
 		pthread_mutex_unlock(&self->mutex);
 		
@@ -601,10 +592,6 @@ DESTROY(Net_DNS_Native *self)
 			// attempt to destroy from another perl thread
 			return;
 		}
-		
-		pthread_mutex_lock(&self->mutex);
-		DNS_free_timedout(self, 0);
-		pthread_mutex_unlock(&self->mutex);
 		
 		if (self->pool) {
 			pthread_mutex_lock(&self->mutex);
@@ -635,18 +622,30 @@ DESTROY(Net_DNS_Native *self)
 		}
 		
 		if (bstree_size(self->fd_map) > 0) {
-			warn("destroying object with %d non-received or timed out results", bstree_size(self->fd_map));
+			int non_received = bstree_size(self->fd_map) - queue_size(self->tout_queue);
+            if (non_received > 0)
+                warn("destroying object with %d non-received results", non_received);
 			
 			int *fds = bstree_keys(self->fd_map);
 			int i, l;
 			char buf[1];
 			
 			for (i=0, l=bstree_size(self->fd_map); i<l; i++) {
-				read(fds[i], buf, 1);
+                read(fds[i], buf, 1);
+                
+                DNS_result *res = bstree_get(self->fd_map, fds[i]);
+                close(res->fd1);
+                close(fds[i]);
+                
+                if (!res->error && res->hostinfo) freeaddrinfo(res->hostinfo);
+                if (res->arg->hints)   free(res->arg->hints);
+                if (res->arg->host)    Safefree(res->arg->host);
+                if (res->arg->service) Safefree(res->arg->service);
+                free(res->arg);
+                free(res);
 			}
 			
 			free(fds);
-			DNS_free_timedout(self, 0);
 		}
 		
 		queue_iterator *it = queue_iterator_new(DNS_instances);
