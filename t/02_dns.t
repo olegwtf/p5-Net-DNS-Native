@@ -166,15 +166,23 @@ ok(!eval{$dns->get_result($fh)}, "get_result for unknow handle");
 
 $dns = Net::DNS::Native->new(pool => 3);
 $sel = IO::Select->new();
-
-for my $domain ('mail.ru', 'google.com', 'google.ru', 'google.cy', 'mail.com', 'mail.net') {
-    my $sock = $dns->gethostbyname($domain);
-    if ($domain eq 'mail.ru') {
-        $dns->timedout($sock);
+{
+    my $orig = \&Net::DNS::Native::timedout;
+    my $timedout = 0;
+    local *Net::DNS::Native::timedout = sub {
+        my $self = shift;
+        $timedout++;
+        $self->$orig(@_);
+    };
+    
+    for my $domain ('mail.ru', 'google.com', 'google.ru', 'google.cy', 'mail.com', 'mail.net') {
+        my $sock = $dns->gethostbyname($domain);
+        if ($domain ne 'mail.ru') {
+            $sel->add($sock);
+        }
     }
-    else {
-        $sel->add($sock);
-    }
+    
+    is($timedout, 1, 'right count marked as timed out');
 }
 
 while ($sel->count() > 0) {
