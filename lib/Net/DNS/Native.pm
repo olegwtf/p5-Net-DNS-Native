@@ -8,7 +8,7 @@ use Symbol ();
 use POSIX ();
 use Config;
 
-our $VERSION = '0.15';
+our $VERSION = '0.16';
 
 use constant {
     INET_ATON     => 0,
@@ -313,7 +313,8 @@ but will automatically discard any results returned when resolving will be done.
 associated resolving operation. And don't need to call C<get_result($handle)> to destroy resources associated with this handle. Furthermore, if you are using thread pool
 and all threads in pool are busy and C<extra_thread> option not specified, but 1 resolving operation from this pool marked as timed out and you'll add one more resolving operation,
 this operation will not be queued. Instead of this 1 temporary extra thread will be created to process this operation. So you can think about C<timedout> like about real interrupter of
-long running resolving operation. But you are warned how it really works.
+long running resolving operation. But you are warned how it really works. B<Note:> since 0.16 handles will be automatically marked as timedout during destruction, so you no need more to
+call C<timedout($handle)> yourself, just lose last reference to this handle.
 
 =head1 AUTHOR
 
