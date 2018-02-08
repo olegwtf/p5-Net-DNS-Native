@@ -127,7 +127,6 @@ sub DESTROY {
     
     if ($self->need_result) {
         $self->{rs}->timedout($self->{fd});
-        $self->need_result(0);
     }
 }
 
