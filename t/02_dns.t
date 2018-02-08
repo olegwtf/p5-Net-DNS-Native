@@ -167,6 +167,7 @@ ok(!eval{$dns->get_result($fh)}, "get_result for unknow handle");
 $dns = Net::DNS::Native->new(pool => 3);
 $sel = IO::Select->new();
 {
+    no warnings 'redefine';
     my $orig = \&Net::DNS::Native::timedout;
     my $timedout = 0;
     local *Net::DNS::Native::timedout = sub {
