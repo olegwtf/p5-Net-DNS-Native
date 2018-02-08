@@ -596,7 +596,17 @@ DESTROY(Net_DNS_Native *self)
         if (self->pool) {
             pthread_mutex_lock(&self->mutex);
             if (queue_size(self->in_queue) > 0) {
-                warn("destroying object while queue for resolver has %d elements", queue_size(self->in_queue));
+                warn("destroying Net::DNS::Native object while queue for resolver has %d elements", queue_size(self->in_queue));
+                queue_iterator *it = queue_iterator_new(self->in_queue);
+                DNS_thread_arg *arg;
+                
+                while (!queue_iterator_end(it)) {
+                    arg = queue_at(self->in_queue, it);
+                    free(arg);
+                    queue_iterator_next(it);
+                }
+                
+                queue_iterator_destroy(it);
                 queue_clear(self->in_queue);
             }
             pthread_mutex_unlock(&self->mutex);
@@ -621,17 +631,23 @@ DESTROY(Net_DNS_Native *self)
             sem_destroy(&self->semaphore);
         }
         
+        pthread_mutex_lock(&self->mutex);
+        DNS_free_timedout(self, 0);
+        pthread_mutex_unlock(&self->mutex);
+        
         if (bstree_size(self->fd_map) > 0) {
-            int non_received = bstree_size(self->fd_map) - queue_size(self->tout_queue);
-            if (non_received > 0)
-                warn("destroying object with %d non-received results", non_received);
+            warn("destroying Net::DNS::Native object with %d non-received results", bstree_size(self->fd_map));
             
             int *fds = bstree_keys(self->fd_map);
-            int i, l;
+            int i, l, j;
             char buf[1];
             
             for (i=0, l=bstree_size(self->fd_map); i<l; i++) {
-                read(fds[i], buf, 1);
+                for (j=0; j<2; j++) {
+                    read(fds[i], buf, 1);
+                    // notify_on_begin may send 1
+                    if (buf[0] == '2') break;
+                }
                 
                 DNS_result *res = bstree_get(self->fd_map, fds[i]);
                 close(res->fd1);
