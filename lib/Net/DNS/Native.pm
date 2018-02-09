@@ -125,7 +125,7 @@ sub CLOSE {}
 sub DESTROY {
     my $self = shift;
     
-    if ($self->need_result) {
+    if ($self->need_result && $self->{rs}) {
         $self->{rs}->timedout($self->{fd});
     }
 }
