@@ -8,7 +8,7 @@ use Symbol ();
 use POSIX ();
 use Config;
 
-our $VERSION = '0.16';
+our $VERSION = '0.17';
 
 use constant {
     INET_ATON     => 0,

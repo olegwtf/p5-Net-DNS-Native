@@ -1,5 +1,9 @@
 Revision history for Perl extension Net::DNS::Native
 
+0.17  Fri Feb  9 11:35:24 DST 2018
+    - Fix possible warning during global destruction,
+      where timedout() call on undefined value occures
+
 0.16  Fri Feb  9 00:11:56 DST 2018
     - Automatically mark destroyed handle as timed out
     - Some cleanup fixes inside DESTROY
