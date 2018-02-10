@@ -8,13 +8,13 @@
 #include "perl.h"
 #include "XSUB.h"
 #include "ppport.h"
+#include "bstree.h"
 
 #pragma push_macro("free")
 #pragma push_macro("malloc")
 #undef free
 #undef malloc
 #include "queue.h" // will be used outside of the main thread
-#include "bstree.h"
 #pragma pop_macro("free")
 #pragma pop_macro("malloc")
 
