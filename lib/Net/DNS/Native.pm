@@ -223,7 +223,7 @@ If it will fail to install use instructions listed below.
 
 One of the possible solution to make your perl compatible with this module is to build perl with perl threads support
 using C<-Dusethreads> for C<Configure> script. Other solution is to use C<-A prepend:libswanted="pthread ">, which will
-just link non-threaded perl with pthreads.
+just link non-threaded perl with pthreads. This is done by default since Perl 5.22.
 
 On Linux with perl not linked with pthreads this module may die with appropriate message at require time. This may happen
 if you are called some functions from system library related to DNS operations before loading of C<Net::DNS::Native> (or some module,
