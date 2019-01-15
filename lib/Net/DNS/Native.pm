@@ -93,6 +93,8 @@ sub get_result {
 sub timedout {
     my ($self, $sock) = @_;
     
+    return if defined ${^GLOBAL_PHASE} && ${^GLOBAL_PHASE} eq 'DESTRUCT';
+    
     if (ref $sock) {
         tied(*$sock)->need_result(0);
         $sock = fileno $sock;
