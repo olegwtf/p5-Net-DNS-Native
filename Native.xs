@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdint.h>
+#include <fcntl.h>
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSUB.h"
@@ -427,7 +428,10 @@ _getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int
         if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fd) != 0)
 #endif
             croak("socketpair(): %s", strerror(errno));
-        
+#ifndef __linux__
+        fcntl(fd, F_SETFD, FD_CLOEXEC);
+#endif
+
         char *service = SvOK(sv_service) ? SvPV_nolen(sv_service) : "";
         struct addrinfo *hints = NULL;
         
