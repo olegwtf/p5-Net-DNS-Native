@@ -421,7 +421,11 @@ _getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int
             DNS_reinit_pool(self);
         }
 #endif
+#ifdef __linux__
         if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, PF_UNSPEC, fd) != 0)
+#else
+        if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fd) != 0)
+#endif
             croak("socketpair(): %s", strerror(errno));
         
         char *service = SvOK(sv_service) ? SvPV_nolen(sv_service) : "";
