@@ -714,6 +714,10 @@ DESTROY(Net_DNS_Native *self)
             free(fds);
         }
         
+        pthread_mutex_lock(&self->mutex);
+        // last chance for last extra thread to quit
+        pthread_mutex_unlock(&self->mutex);
+        
         queue_iterator *it = queue_iterator_new(DNS_instances);
         while (!queue_iterator_end(it)) {
             if (queue_at(DNS_instances, it) == self) {
