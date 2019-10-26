@@ -86,7 +86,7 @@ typedef struct {
     char *service;
     struct addrinfo *hints;
     char extra;
-    char pool;
+    char queued;
     DNS_result *res;
 } DNS_thread_arg;
 
@@ -105,7 +105,7 @@ queue *DNS_instances = NULL;
 void *DNS_getaddrinfo(void *v_arg) {
     DNS_thread_arg *arg = (DNS_thread_arg *)v_arg;
 #ifndef WIN32
-    if (!arg->pool)
+    if (!arg->queued)
         pthread_sigmask(SIG_BLOCK, &arg->self->blocked_sig, NULL);
 #endif
     
@@ -146,6 +146,38 @@ void *DNS_pool_worker(void *v_arg) {
         pthread_mutex_lock(&self->mutex);
         self->busy_threads--;
         pthread_mutex_unlock(&self->mutex);
+    }
+    
+    return NULL;
+}
+
+void *DNS_extra_worker(void *v_arg) {
+    Net_DNS_Native *self = (Net_DNS_Native*)v_arg;
+    char stop = 0;
+#ifndef WIN32
+    pthread_sigmask(SIG_BLOCK, &self->blocked_sig, NULL);
+#endif
+    
+    while (sem_wait(&self->semaphore) == 0) {
+        pthread_mutex_lock(&self->mutex);
+        void *arg = queue_shift(self->in_queue);
+        pthread_mutex_unlock(&self->mutex);
+        
+        if (arg == NULL) {
+            break;
+        }
+        
+        DNS_getaddrinfo(arg);
+        
+        pthread_mutex_lock(&self->mutex);
+        if (!queue_size(self->in_queue) || (self->pool && self->busy_threads < self->pool)) {
+            // extra worker may stop if queue is empty or there is free worker from the pool
+            stop = 1;
+        }
+        pthread_mutex_unlock(&self->mutex);
+        
+        if (stop)
+            break;
     }
     
     return NULL;
@@ -489,7 +521,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int
         arg->service = strlen(service) ? savepv(service) : NULL;
         arg->hints = hints;
         arg->extra = 0;
-        arg->pool  = 0;
+        arg->queued  = 1;
         arg->res = res;
         
         pthread_mutex_lock(&self->mutex);
@@ -501,7 +533,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int
                 self->extra_threads_cnt++;
             }
             else {
-                arg->pool = 1;
+                arg->queued = 1;
                 queue_push(self->in_queue, arg);
                 sem_post(&self->semaphore);
             }
