@@ -61,14 +61,15 @@ typedef struct DNS_result DNS_result;
 
 typedef struct {
     pthread_mutex_t mutex;
+    pthread_cond_t cv;
     pthread_attr_t thread_attrs;
-    pthread_t *threads_pool;
 #ifndef WIN32
     sigset_t blocked_sig;
 #endif
     sem_t semaphore;
     bstree* fd_map;
     queue* in_queue;
+    int active_threads_cnt;
     int pool;
     char extra_thread;
     char notify_on_begin;
@@ -102,10 +103,20 @@ struct DNS_result {
 
 queue *DNS_instances = NULL;
 
+void DNS_on_thread_finish(Net_DNS_Native *self) {
+    pthread_mutex_lock(&self->mutex);
+    self->active_threads_cnt--;
+    if (self->active_threads_cnt == 0) {
+        pthread_cond_signal(&self->cv);
+    }
+    pthread_mutex_unlock(&self->mutex);
+}
+
 void *DNS_getaddrinfo(void *v_arg) {
     DNS_thread_arg *arg = (DNS_thread_arg *)v_arg;
+    char queued = arg->queued; // to not affect by main thread
 #ifndef WIN32
-    if (!arg->queued)
+    if (!queued)
         pthread_sigmask(SIG_BLOCK, &arg->self->blocked_sig, NULL);
 #endif
     
@@ -121,6 +132,7 @@ void *DNS_getaddrinfo(void *v_arg) {
     write(arg->res->fd1, "2", 1);
     pthread_mutex_unlock(&arg->self->mutex);
     
+    if (!queued) DNS_on_thread_finish(arg->self);
     return NULL;
 }
 
@@ -148,6 +160,7 @@ void *DNS_pool_worker(void *v_arg) {
         pthread_mutex_unlock(&self->mutex);
     }
     
+    DNS_on_thread_finish(self);
     return NULL;
 }
 
@@ -180,6 +193,7 @@ void *DNS_extra_worker(void *v_arg) {
             break;
     }
     
+    DNS_on_thread_finish(self);
     return NULL;
 }
 
@@ -272,9 +286,9 @@ void DNS_reinit_pool(Net_DNS_Native *self) {
     int i, rc;
     
     for (i=0; i<self->pool; i++) {
-        rc = pthread_create(&tid, NULL, DNS_pool_worker, (void*)self);
+        rc = pthread_create(&tid, &self->thread_attrs, DNS_pool_worker, (void*)self);
         if (rc == 0) {
-            self->threads_pool[i] = tid;
+            self->active_threads_cnt++;
         }
         else {
             croak("Can't recreate thread #%d after fork: %s", i+1, strerror(rc));
@@ -298,6 +312,7 @@ void DNS_after_fork_handler_child() {
         // reinitialize stuff
         DNS_free_timedout(self, 1);
         
+        self->active_threads_cnt = 0;
         self->extra_threads_cnt = 0;
         self->busy_threads = 0;
         self->perl = PERL_GET_THX;
@@ -336,6 +351,7 @@ new(char* class, ...)
         self->pool = 0;
         self->notify_on_begin = 0;
         self->extra_thread = 0;
+        self->active_threads_cnt = 0;
         self->extra_threads_cnt = 0;
         self->busy_threads = 0;
         self->forked = 0;
@@ -364,7 +380,7 @@ new(char* class, ...)
             }
         }
         
-        char attr_ok = 0, mutex_ok = 0, sem_ok = 0;
+        char attr_ok = 0, mutex_ok = 0, cv_ok = 0, sem_ok = 0;
         
         rc = pthread_attr_init(&self->thread_attrs);
         if (rc != 0) {
@@ -384,8 +400,14 @@ new(char* class, ...)
         }
         mutex_ok = 1;
         
+        rc = pthread_cond_init(&self->cv, NULL);
+        if (rc != 0) {
+            warn("pthread_cond_init(): %s", strerror(rc));
+            goto FAIL;
+        }
+        cv_ok = 1;
+        
         self->in_queue = NULL;
-        self->threads_pool = NULL;
         
         if (DNS_instances == NULL) {
             DNS_instances = queue_new();
@@ -405,14 +427,13 @@ new(char* class, ...)
             }
             sem_ok = 1;
             
-            self->threads_pool = malloc(self->pool*sizeof(pthread_t));
             pthread_t tid;
             int j = 0;
-            
             for (i=0; i<self->pool; i++) {
-                rc = pthread_create(&tid, NULL, DNS_pool_worker, (void*)self);
+                rc = pthread_create(&tid, &self->thread_attrs, DNS_pool_worker, (void*)self);
                 if (rc == 0) {
-                    self->threads_pool[j++] = tid;
+                    self->active_threads_cnt++;
+                    j++;
                 }
                 else {
                     warn("Can't create thread #%d: %s", i+1, strerror(rc));
@@ -436,8 +457,8 @@ new(char* class, ...)
             FAIL:
                 if (attr_ok) pthread_attr_destroy(&self->thread_attrs);
                 if (mutex_ok) pthread_mutex_destroy(&self->mutex);
+                if (cv_ok) pthread_cond_destroy(&self->cv);
                 if (sem_ok) sem_destroy(&self->semaphore);
-                if (self->threads_pool) free(self->threads_pool);
                 Safefree(self);
                 RETVAL = &PL_sv_undef;
         }
@@ -521,7 +542,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int
         arg->service = strlen(service) ? savepv(service) : NULL;
         arg->hints = hints;
         arg->extra = 0;
-        arg->queued  = 1;
+        arg->queued  = 0;
         arg->res = res;
         
         pthread_mutex_lock(&self->mutex);
@@ -542,8 +563,15 @@ _getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int
         
         if (!self->pool || arg->extra) {
             pthread_t tid;
+            
+            pthread_mutex_lock(&self->mutex);
             int rc = pthread_create(&tid, &self->thread_attrs, DNS_getaddrinfo, (void *)arg);
-            if (rc != 0) {
+            if (rc == 0) {
+                self->active_threads_cnt++;
+                pthread_mutex_unlock(&self->mutex);
+            }
+            else {
+                pthread_mutex_unlock(&self->mutex);
                 if (arg->host)    Safefree(arg->host);
                 if (arg->service) Safefree(arg->service);
                 free(arg);
@@ -661,23 +689,15 @@ DESTROY(Net_DNS_Native *self)
             for (i=0; i<self->pool; i++) {
                 sem_post(&self->semaphore);
             }
-            
-            void *rv;
-            
-            for (i=0; i<self->pool; i++) {
-#ifdef __NetBSD__
-                // unfortunetly NetBSD can join only first thread after fork
-                if (self->forked && i > 0) break;
-#endif
-                pthread_join(self->threads_pool[i], &rv);
-            }
-            
-            queue_destroy(self->in_queue);
-            free(self->threads_pool);
-            sem_destroy(&self->semaphore);
         }
         
+        // wait all active threads to finish
         pthread_mutex_lock(&self->mutex);
+        while (self->active_threads_cnt != 0) {
+            //warn("CNT: %d\n", self->active_threads_cnt);
+            pthread_cond_wait(&self->cv, &self->mutex);
+        }
+        
         DNS_free_timedout(self, 0);
         pthread_mutex_unlock(&self->mutex);
         
@@ -686,19 +706,12 @@ DESTROY(Net_DNS_Native *self)
                 warn("destroying Net::DNS::Native object with %d non-received results", bstree_size(self->fd_map));
             
             int *fds = bstree_keys(self->fd_map);
-            int i, l, j;
-            char buf[1];
+            int i, l;
             
             for (i=0, l=bstree_size(self->fd_map); i<l; i++) {
                 DNS_result *res = bstree_get(self->fd_map, fds[i]);
                 
                 if (!res->dequeued) {
-                    for (j=0; j<2; j++) {
-                        read(fds[i], buf, 1);
-                        // notify_on_begin may send 1
-                        if (buf[0] == '2') break;
-                    }
-                    
                     if (!res->gai_error && res->hostinfo) freeaddrinfo(res->hostinfo);
                     if (res->arg->hints)   free(res->arg->hints);
                     if (res->arg->host)    Safefree(res->arg->host);
@@ -714,10 +727,6 @@ DESTROY(Net_DNS_Native *self)
             free(fds);
         }
         
-        pthread_mutex_lock(&self->mutex);
-        // last chance for last extra thread to quit
-        pthread_mutex_unlock(&self->mutex);
-        
         queue_iterator *it = queue_iterator_new(DNS_instances);
         while (!queue_iterator_end(it)) {
             if (queue_at(DNS_instances, it) == self) {
@@ -728,8 +737,13 @@ DESTROY(Net_DNS_Native *self)
         }
         queue_iterator_destroy(it);
         
+        if (self->in_queue) {
+            queue_destroy(self->in_queue);
+            sem_destroy(&self->semaphore);
+        }
         pthread_attr_destroy(&self->thread_attrs);
         pthread_mutex_destroy(&self->mutex);
+        pthread_cond_destroy(&self->cv);
         bstree_destroy(self->fd_map);
         queue_destroy(self->tout_queue);
         Safefree(self);
