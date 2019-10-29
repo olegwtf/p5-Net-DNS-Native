@@ -115,24 +115,25 @@ void DNS_on_thread_finish(Net_DNS_Native *self) {
 void *DNS_getaddrinfo(void *v_arg) {
     DNS_thread_arg *arg = (DNS_thread_arg *)v_arg;
     char queued = arg->queued; // to not affect by main thread
+    Net_DNS_Native *self = arg->self;
 #ifndef WIN32
     if (!queued)
-        pthread_sigmask(SIG_BLOCK, &arg->self->blocked_sig, NULL);
+        pthread_sigmask(SIG_BLOCK, &self->blocked_sig, NULL);
 #endif
     
-    if (arg->self->notify_on_begin)
+    if (self->notify_on_begin)
         write(arg->res->fd1, "1", 1);
     arg->res->gai_error = getaddrinfo(arg->host, arg->service, arg->hints, &arg->res->hostinfo);
     if (arg->res->gai_error == EAI_SYSTEM)
         arg->res->sys_error = errno;
 
-    pthread_mutex_lock(&arg->self->mutex);
+    pthread_mutex_lock(&self->mutex);
     arg->res->arg = arg;
-    if (arg->extra) arg->self->extra_threads_cnt--;
+    if (arg->extra) self->extra_threads_cnt--;
     write(arg->res->fd1, "2", 1);
-    pthread_mutex_unlock(&arg->self->mutex);
+    pthread_mutex_unlock(&self->mutex);
     
-    if (!queued) DNS_on_thread_finish(arg->self);
+    if (!queued) DNS_on_thread_finish(self);
     return NULL;
 }
 
@@ -691,15 +692,14 @@ DESTROY(Net_DNS_Native *self)
             }
         }
         
-        // wait all active threads to finish
+        // wait all active threads to be finished
         pthread_mutex_lock(&self->mutex);
         while (self->active_threads_cnt != 0) {
-            //warn("CNT: %d\n", self->active_threads_cnt);
             pthread_cond_wait(&self->cv, &self->mutex);
         }
+        pthread_mutex_unlock(&self->mutex);
         
         DNS_free_timedout(self, 0);
-        pthread_mutex_unlock(&self->mutex);
         
         if (bstree_size(self->fd_map) > 0) {
             if (!PL_dirty)
