@@ -76,7 +76,6 @@ typedef struct {
     int extra_threads_cnt;
     int busy_threads;
     queue* tout_queue;
-    char forked;
     char need_pool_reinit;
     PerlInterpreter *perl;
 } Net_DNS_Native;
@@ -105,8 +104,7 @@ queue *DNS_instances = NULL;
 
 void DNS_on_thread_finish(Net_DNS_Native *self) {
     pthread_mutex_lock(&self->mutex);
-    self->active_threads_cnt--;
-    if (self->active_threads_cnt == 0) {
+    if (--self->active_threads_cnt == 0) {
         pthread_cond_signal(&self->cv);
     }
     pthread_mutex_unlock(&self->mutex);
@@ -317,7 +315,6 @@ void DNS_after_fork_handler_child() {
         self->extra_threads_cnt = 0;
         self->busy_threads = 0;
         self->perl = PERL_GET_THX;
-        self->forked = 1;
         
         if (self->pool) {
 #ifdef __NetBSD__
@@ -355,7 +352,6 @@ new(char* class, ...)
         self->active_threads_cnt = 0;
         self->extra_threads_cnt = 0;
         self->busy_threads = 0;
-        self->forked = 0;
         self->need_pool_reinit = 0;
         self->perl = PERL_GET_THX;
 #ifndef WIN32
@@ -568,7 +564,7 @@ _getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int
             pthread_mutex_lock(&self->mutex);
             int rc = pthread_create(&tid, &self->thread_attrs, DNS_getaddrinfo, (void *)arg);
             if (rc == 0) {
-                self->active_threads_cnt++;
+                ++self->active_threads_cnt;
                 pthread_mutex_unlock(&self->mutex);
             }
             else {
