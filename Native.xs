@@ -23,7 +23,6 @@
 #if defined(WIN32) && !defined(UNDER_CE)
 # include <io.h>
 # define write _write
-# define read _read
 #endif
 
 // unnamed semaphores are not implemented in this POSIX compatible UNIX system
