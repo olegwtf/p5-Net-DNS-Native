@@ -122,8 +122,10 @@ void *DNS_getaddrinfo(void *v_arg) {
     if (self->notify_on_begin)
         write(arg->res->fd1, "1", 1);
     arg->res->gai_error = getaddrinfo(arg->host, arg->service, arg->hints, &arg->res->hostinfo);
+#ifdef EAI_SYSTEM
     if (arg->res->gai_error == EAI_SYSTEM)
         arg->res->sys_error = errno;
+#endif
 
     pthread_mutex_lock(&self->mutex);
     arg->res->arg = arg;
@@ -607,7 +609,7 @@ _get_result(Net_DNS_Native *self, int fd)
         SV *err = newSV(0);
         sv_setiv(err, (IV)res->gai_error);
         sv_setpv(err, res->gai_error ? gai_strerror(res->gai_error) : "");
-        if (res->gai_error == EAI_SYSTEM)
+        if (res->sys_error)
             sv_catpvf(err, " (%s)", strerror(res->sys_error));
         SvIOK_on(err);
         XPUSHs(sv_2mortal(err));
