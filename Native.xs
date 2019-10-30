@@ -478,10 +478,10 @@ _getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int
 #endif
         if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fd) != 0)
             croak("socketpair(): %s", strerror(errno));
-
+#ifdef FD_CLOEXEC
         fcntl(fd[0], F_SETFD, FD_CLOEXEC);
         fcntl(fd[1], F_SETFD, FD_CLOEXEC);
-
+#endif
         char *service = SvOK(sv_service) ? SvPV_nolen(sv_service) : "";
         struct addrinfo *hints = NULL;
         
