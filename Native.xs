@@ -71,6 +71,8 @@ typedef struct {
     int active_threads_cnt;
     int pool;
     char extra_thread;
+    int threads_limit;
+    char is_strict_limit;
     char notify_on_begin;
     int extra_threads_cnt;
     int busy_threads;
@@ -84,7 +86,6 @@ typedef struct {
     char *host;
     char *service;
     struct addrinfo *hints;
-    char extra;
     char queued;
     DNS_result *res;
 } DNS_thread_arg;
@@ -128,7 +129,7 @@ void *DNS_getaddrinfo(void *v_arg) {
 
     pthread_mutex_lock(&self->mutex);
     arg->res->arg = arg;
-    if (arg->extra) self->extra_threads_cnt--;
+    if (!queued) self->extra_threads_cnt--;
     write(arg->res->fd1, "2", 1);
     pthread_mutex_unlock(&self->mutex);
     
@@ -348,6 +349,8 @@ new(char* class, ...)
         
         int i, rc;
         self->pool = 0;
+        self->threads_limit = 0;
+        self->is_strict_limit = 0;
         self->notify_on_begin = 0;
         self->extra_thread = 0;
         self->active_threads_cnt = 0;
@@ -369,6 +372,10 @@ new(char* class, ...)
             }
             else if (strEQ(opt, "extra_thread")) {
                 self->extra_thread = SvIV(ST(i+1));
+            }
+            else if (strEQ(opt, "threads_limit") || strEQ(opt, "threads_strict_limit")) {
+                self->threads_limit = SvIV(ST(i+1));
+                self->is_strict_limit = strEQ(opt, "threads_strict_limit");
             }
             else if (strEQ(opt, "notify_on_begin")) {
                 self->notify_on_begin = SvIV(ST(i+1));
@@ -418,31 +425,34 @@ new(char* class, ...)
 #endif
         }
         
-        if (self->pool) {
+        if (self->pool || self->threads_limit) {
             if (sem_init(&self->semaphore, 0, 0) != 0) {
                 warn("sem_init(): %s", strerror(errno));
                 goto FAIL;
             }
             sem_ok = 1;
             
-            pthread_t tid;
-            int j = 0;
-            for (i=0; i<self->pool; i++) {
-                rc = pthread_create(&tid, &self->thread_attrs, DNS_pool_worker, (void*)self);
-                if (rc == 0) {
-                    self->active_threads_cnt++;
-                    j++;
+            if (self->pool) {
+                pthread_t tid;
+                int j = 0;
+                for (i=0; i<self->pool; i++) {
+                    rc = pthread_create(&tid, &self->thread_attrs, DNS_pool_worker, (void*)self);
+                    if (rc == 0) {
+                        self->active_threads_cnt++;
+                        j++;
+                    }
+                    else {
+                        warn("Can't create thread #%d: %s", i+1, strerror(rc));
+                    }
                 }
-                else {
-                    warn("Can't create thread #%d: %s", i+1, strerror(rc));
+                
+                if (j == 0) {
+                    goto FAIL;
                 }
+                
+                self->pool = j;
             }
             
-            if (j == 0) {
-                goto FAIL;
-            }
-            
-            self->pool = j;
             self->in_queue = queue_new();
         }
         
@@ -539,36 +549,48 @@ _getaddrinfo(Net_DNS_Native *self, char *host, SV* sv_service, SV* sv_hints, int
         arg->host = strlen(host) ? savepv(host) : NULL;
         arg->service = strlen(service) ? savepv(service) : NULL;
         arg->hints = hints;
-        arg->extra = 0;
         arg->queued  = 0;
         arg->res = res;
         
         pthread_mutex_lock(&self->mutex);
         DNS_free_timedout(self, 0);
         bstree_put(self->fd_map, fd[0], res);
+        char allow_extra_worker = 1;
+        if (self->threads_limit && self->active_threads_cnt == (self->is_strict_limit ? self->threads_limit : self->threads_limit + queue_size(self->tout_queue))) {
+            allow_extra_worker = 0;
+        }
+        
         if (self->pool) {
-            if (self->busy_threads == self->pool && (self->extra_thread || queue_size(self->tout_queue) > self->extra_threads_cnt)) {
-                arg->extra = 1;
+            if (allow_extra_worker && self->busy_threads == self->pool && (self->extra_thread || queue_size(self->tout_queue) > self->extra_threads_cnt)) {
                 self->extra_threads_cnt++;
             }
             else {
                 arg->queued = 1;
-                queue_push(self->in_queue, arg);
-                sem_post(&self->semaphore);
+                allow_extra_worker = 0;
             }
+        }
+        
+        if (arg->queued || self->threads_limit) {
+            arg->queued = 1;
+            queue_push(self->in_queue, arg);
+            sem_post(&self->semaphore);
         }
         pthread_mutex_unlock(&self->mutex);
         
-        if (!self->pool || arg->extra) {
+        if (allow_extra_worker) {
             pthread_t tid;
             
             pthread_mutex_lock(&self->mutex);
-            int rc = pthread_create(&tid, &self->thread_attrs, DNS_getaddrinfo, (void *)arg);
-            if (rc == 0) {
-                ++self->active_threads_cnt;
-                pthread_mutex_unlock(&self->mutex);
-            }
-            else {
+            ++self->active_threads_cnt;
+            pthread_mutex_unlock(&self->mutex);
+            
+            int rc = self->threads_limit ?
+                pthread_create(&tid, &self->thread_attrs, DNS_extra_worker, (void *)self) :
+                pthread_create(&tid, &self->thread_attrs, DNS_getaddrinfo, (void *)arg);
+            
+            if (rc != 0) {
+                pthread_mutex_lock(&self->mutex);
+                self->active_threads_cnt--;
                 pthread_mutex_unlock(&self->mutex);
                 if (arg->host)    Safefree(arg->host);
                 if (arg->service) Safefree(arg->service);
