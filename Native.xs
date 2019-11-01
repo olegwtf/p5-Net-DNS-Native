@@ -103,11 +103,9 @@ struct DNS_result {
 queue *DNS_instances = NULL;
 
 void DNS_on_thread_finish(Net_DNS_Native *self) {
-    pthread_mutex_lock(&self->mutex);
     if (--self->active_threads_cnt == 0) {
         pthread_cond_signal(&self->cv);
     }
-    pthread_mutex_unlock(&self->mutex);
 }
 
 void *DNS_getaddrinfo(void *v_arg) {
@@ -131,9 +129,9 @@ void *DNS_getaddrinfo(void *v_arg) {
     arg->res->arg = arg;
     if (!queued) self->extra_threads_cnt--;
     write(arg->res->fd1, "2", 1);
+    if (!queued) DNS_on_thread_finish(self);
     pthread_mutex_unlock(&self->mutex);
     
-    if (!queued) DNS_on_thread_finish(self);
     return NULL;
 }
 
@@ -147,11 +145,12 @@ void *DNS_pool_worker(void *v_arg) {
         pthread_mutex_lock(&self->mutex);
         void *arg = queue_shift(self->in_queue);
         if (arg != NULL) self->busy_threads++;
+        else DNS_on_thread_finish(self);
         pthread_mutex_unlock(&self->mutex);
         
         if (arg == NULL) {
             // this was request to quit thread
-            break;
+            return NULL;
         }
         
         DNS_getaddrinfo(arg);
@@ -161,7 +160,6 @@ void *DNS_pool_worker(void *v_arg) {
         pthread_mutex_unlock(&self->mutex);
     }
     
-    DNS_on_thread_finish(self);
     return NULL;
 }
 
@@ -175,10 +173,11 @@ void *DNS_extra_worker(void *v_arg) {
     while (sem_wait(&self->semaphore) == 0) {
         pthread_mutex_lock(&self->mutex);
         void *arg = queue_shift(self->in_queue);
+        if (arg == NULL) DNS_on_thread_finish(self);
         pthread_mutex_unlock(&self->mutex);
         
         if (arg == NULL) {
-            break;
+            return NULL;
         }
         
         DNS_getaddrinfo(arg);
@@ -187,14 +186,14 @@ void *DNS_extra_worker(void *v_arg) {
         if (!queue_size(self->in_queue) || (self->pool && self->busy_threads < self->pool)) {
             // extra worker may stop if queue is empty or there is free worker from the pool
             stop = 1;
+            DNS_on_thread_finish(self);
         }
         pthread_mutex_unlock(&self->mutex);
         
         if (stop)
-            break;
+            return NULL;
     }
     
-    DNS_on_thread_finish(self);
     return NULL;
 }
 
