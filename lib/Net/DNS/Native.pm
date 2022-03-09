@@ -192,16 +192,12 @@ Net::DNS::Native - non-blocking system DNS resolver
         my $fh = $dns->inet_aton($host);
         $cv->begin;
         
-        my $w; $w = AnyEvent->io(
-            fh   => $fh,
-            poll => 'r',
-            cb   => sub {
+        my $w; $w = AE::io fileno($fh), 0, sub {
                 my $ip = $dns->get_result($fh);
                 warn $host, $ip ? " has ip " . inet_ntoa($ip) : " has no ip";
                 $cv->end;
                 undef $w;
-            }
-        )
+        }
     }
     
     $cv->end;
